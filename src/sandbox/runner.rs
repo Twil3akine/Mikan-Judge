@@ -1,0 +1,311 @@
+/// fork + exec によるサンドボックス実行。
+///
+/// # 設計上の注意
+/// - `fork()` 後の子プロセスは `execve` まで async-signal-safe な操作のみ行う。
+/// - tokio の `spawn_blocking` スレッドから呼ぶことで、tokio ワーカースレッドの
+///   ロック状態を気にせず fork できる（それでも完全に安全ではないが、
+///   競合プログラミングジャッジの実用範囲では許容される）。
+use std::ffi::CString;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::io::{IntoRawFd, RawFd};
+use std::path::Path;
+use std::time::{Duration, Instant};
+
+use anyhow::{Context, Result};
+use nix::sys::signal::Signal;
+use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+use nix::unistd::{fork, ForkResult, Pid};
+
+use super::{RunResult, RunStatus, SandboxConfig};
+
+pub fn run_sandboxed_blocking(
+    executable: &Path,
+    stdin_data: &[u8],
+    config: &SandboxConfig,
+) -> Result<RunResult> {
+    // fork の前にパイプを作成
+    let (stdin_r, stdin_w) = make_pipe()?;
+    let (stdout_r, stdout_w) = make_pipe()?;
+    let (stderr_r, stderr_w) = make_pipe()?;
+
+    let start = Instant::now();
+
+    // SAFETY: fork 後の子プロセスは execve のみ行い、
+    //         Rust のランタイムやヒープを触らない。
+    match unsafe { fork() }.context("fork(2) failed")? {
+        ForkResult::Child => {
+            child_exec(
+                stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w,
+                executable, config,
+            )
+        }
+        ForkResult::Parent { child } => parent_collect(
+            child,
+            stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w,
+            stdin_data, config, start,
+        ),
+    }
+}
+
+// ---- ユーティリティ ----
+
+fn make_pipe() -> Result<(RawFd, RawFd)> {
+    let (r, w) = nix::unistd::pipe().context("pipe(2) failed")?;
+    Ok((r.into_raw_fd(), w.into_raw_fd()))
+}
+
+// ---- 子プロセス側 ----
+
+/// 子プロセスでサンドボックスを設定してから `execve` する。
+/// この関数は絶対に返らない（`-> !`）。
+fn child_exec(
+    stdin_r: RawFd,
+    stdin_w: RawFd,
+    stdout_r: RawFd,
+    stdout_w: RawFd,
+    stderr_r: RawFd,
+    stderr_w: RawFd,
+    executable: &Path,
+    config: &SandboxConfig,
+) -> ! {
+    // stdin/stdout/stderr を再配線
+    unsafe {
+        libc::dup2(stdin_r, libc::STDIN_FILENO);
+        libc::dup2(stdout_w, libc::STDOUT_FILENO);
+        libc::dup2(stderr_w, libc::STDERR_FILENO);
+
+        // 不要なパイプ端をすべて閉じる
+        libc::close(stdin_r);
+        libc::close(stdin_w);
+        libc::close(stdout_r);
+        libc::close(stdout_w);
+        libc::close(stderr_r);
+        libc::close(stderr_w);
+    }
+
+    // ---- rlimit: リソース制限 ----
+
+    // CPU 時間（秒）: TLE 時に SIGXCPU を送る
+    let cpu_secs = config.time_limit.as_secs().max(1) + 1;
+    set_rlimit(libc::RLIMIT_CPU as _, cpu_secs, cpu_secs + 1);
+
+    // 仮想メモリ上限（MLE 検出用に 2x を上限にする）
+    let mem = config.memory_limit_bytes.saturating_mul(2);
+    set_rlimit(libc::RLIMIT_AS as _, mem, mem);
+
+    // スタックサイズ: 64 MiB
+    let stack: u64 = 64 * 1024 * 1024;
+    set_rlimit(libc::RLIMIT_STACK as _, stack, stack);
+
+    // ファイル書き込みサイズ: 16 MiB（無限ループでディスク埋め対策）
+    let fsize: u64 = 16 * 1024 * 1024;
+    set_rlimit(libc::RLIMIT_FSIZE as _, fsize, fsize);
+
+    // プロセス数: 1（fork 爆弾対策。ただし root では効かないので注意）
+    set_rlimit(libc::RLIMIT_NPROC as _, 1, 1);
+
+    // ---- 名前空間分離 ----
+
+    #[cfg(target_os = "linux")]
+    {
+        use nix::sched::{unshare, CloneFlags};
+        // ネットワーク名前空間を分離して外部通信を遮断
+        let _ = unshare(CloneFlags::CLONE_NEWNET);
+        // CLONE_NEWPID は /proc の再マウントが必要なので後回し
+    }
+
+    // ---- seccomp: システムコール制限 ----
+
+    #[cfg(target_os = "linux")]
+    if let Err(e) = super::seccomp::apply_filter() {
+        // fork 後は eprintln! もリスクがあるが、exec 直前なので許容
+        let msg = format!("seccomp setup failed: {e}\n");
+        unsafe {
+            libc::write(
+                libc::STDERR_FILENO,
+                msg.as_ptr() as *const libc::c_void,
+                msg.len(),
+            );
+            libc::_exit(1);
+        }
+    }
+
+    // ---- execve ----
+
+    let path = match CString::new(executable.as_os_str().as_bytes()) {
+        Ok(p) => p,
+        Err(_) => unsafe { libc::_exit(1) },
+    };
+    let args: &[CString] = &[path.clone()];
+    let env: &[CString] = &[];
+
+    let _ = nix::unistd::execve(&path, args, env);
+
+    // execve が返った = 失敗
+    unsafe { libc::_exit(1) }
+}
+
+// ---- 親プロセス側 ----
+
+fn parent_collect(
+    child: Pid,
+    stdin_r: RawFd,
+    stdin_w: RawFd,
+    stdout_r: RawFd,
+    stdout_w: RawFd,
+    stderr_r: RawFd,
+    stderr_w: RawFd,
+    stdin_data: &[u8],
+    config: &SandboxConfig,
+    start: Instant,
+) -> Result<RunResult> {
+    // 子プロセス側のパイプ端を親では閉じる
+    unsafe {
+        libc::close(stdin_r);
+        libc::close(stdout_w);
+        libc::close(stderr_w);
+    }
+
+    // stdin を別スレッドで書き込む（パイプバッファを詰まらせないため）
+    {
+        let data = stdin_data.to_owned();
+        std::thread::spawn(move || {
+            let mut offset = 0;
+            while offset < data.len() {
+                let n = unsafe {
+                    libc::write(
+                        stdin_w,
+                        data[offset..].as_ptr() as *const libc::c_void,
+                        data.len() - offset,
+                    )
+                };
+                if n <= 0 {
+                    break;
+                }
+                offset += n as usize;
+            }
+            unsafe { libc::close(stdin_w) };
+        });
+    }
+
+    // stdout / stderr を別スレッドで読み込む（パイプデッドロック防止）
+    let max_out = config.max_output_bytes;
+    let stdout_handle = std::thread::spawn(move || drain_fd(stdout_r, max_out));
+    let stderr_handle = std::thread::spawn(move || drain_fd(stderr_r, 65_536));
+
+    // 子プロセスの終了をポーリング（ウォールクロックのタイムリミット付き）
+    let deadline = start + config.time_limit + Duration::from_millis(100);
+    let mut final_status: Option<WaitStatus> = None;
+    let mut killed = false;
+
+    loop {
+        match waitpid(child, Some(WaitPidFlag::WNOHANG)) {
+            Ok(WaitStatus::StillAlive) => {
+                if Instant::now() >= deadline {
+                    let _ = nix::sys::signal::kill(child, Signal::SIGKILL);
+                    killed = true;
+                    // 子を確実に回収
+                    final_status = waitpid(child, None).ok();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Ok(ws) => {
+                final_status = Some(ws);
+                break;
+            }
+            Err(_) => break,
+        }
+    }
+
+    let time_used = start.elapsed();
+
+    // waitpid 後に getrusage で子プロセスのリソース使用量を取得
+    // max_rss は Linux では KB 単位
+    let memory_used_bytes = get_children_max_rss_bytes();
+
+    // ここで join することでパイプが完全に読み切られるのを待つ
+    let stdout = stdout_handle.join().unwrap_or_default();
+    let stderr = stderr_handle.join().unwrap_or_default();
+
+    let (exit_code, status) = determine_status(killed, time_used, config.time_limit, final_status);
+
+    Ok(RunResult {
+        stdout,
+        stderr,
+        exit_code,
+        time_used,
+        memory_used_bytes,
+        status,
+    })
+}
+
+fn determine_status(
+    killed: bool,
+    time_used: Duration,
+    time_limit: Duration,
+    final_status: Option<WaitStatus>,
+) -> (Option<i32>, RunStatus) {
+    if killed || time_used > time_limit + Duration::from_millis(50) {
+        return (None, RunStatus::TimeLimitExceeded);
+    }
+
+    match final_status {
+        Some(WaitStatus::Exited(_, code)) => {
+            if code == 0 {
+                (Some(code), RunStatus::Ok)
+            } else {
+                (Some(code), RunStatus::RuntimeError)
+            }
+        }
+        Some(WaitStatus::Signaled(_, sig, _)) => {
+            // SIGXCPU = RLIMIT_CPU 超過 → TLE
+            if sig == Signal::SIGXCPU {
+                (None, RunStatus::TimeLimitExceeded)
+            } else {
+                (None, RunStatus::Killed(sig as i32))
+            }
+        }
+        _ => (None, RunStatus::RuntimeError),
+    }
+}
+
+/// libc::setrlimit ラッパー（nix の Rlim 型に依存しない）
+fn set_rlimit(resource: libc::c_int, soft: u64, hard: u64) {
+    let limit = libc::rlimit {
+        rlim_cur: soft as libc::rlim_t,
+        rlim_max: hard as libc::rlim_t,
+    };
+    unsafe { libc::setrlimit(resource, &limit) };
+}
+
+/// RUSAGE_CHILDREN の max_rss をバイト単位で返す（Linux: KB 単位なので ×1024）
+fn get_children_max_rss_bytes() -> u64 {
+    let mut usage = unsafe { std::mem::zeroed::<libc::rusage>() };
+    let ret = unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut usage) };
+    if ret == 0 {
+        (usage.ru_maxrss as u64).saturating_mul(1024)
+    } else {
+        0
+    }
+}
+
+/// fd からデータを読み切って Vec<u8> で返す。max_bytes を超えた分は捨てる。
+fn drain_fd(fd: RawFd, max_bytes: usize) -> Vec<u8> {
+    let mut buf = vec![0u8; 4096];
+    let mut out = Vec::new();
+    loop {
+        let n =
+            unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+        if n <= 0 {
+            break;
+        }
+        let n = n as usize;
+        let remaining = max_bytes.saturating_sub(out.len());
+        if remaining > 0 {
+            out.extend_from_slice(&buf[..n.min(remaining)]);
+        }
+    }
+    unsafe { libc::close(fd) };
+    out
+}
