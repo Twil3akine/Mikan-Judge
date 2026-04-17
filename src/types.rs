@@ -41,8 +41,8 @@ impl Language {
         match self {
             Language::Cpp => "C++17",
             Language::Rust => "Rust",
-            Language::Python => "Python (CPython)",
-            Language::PyPy => "Python (PyPy)",
+            Language::Python => "Python3 (CPython)",
+            Language::PyPy => "Python3 (PyPy)",
         }
     }
 
