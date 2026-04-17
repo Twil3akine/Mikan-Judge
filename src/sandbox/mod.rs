@@ -32,11 +32,15 @@ pub struct CompileOutput {
 
 /// サンドボックス内実行の結果
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct RunResult {
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
     pub exit_code: Option<i32>,
+    /// 壁時計時間（TLE 判定に使用）
     pub time_used: Duration,
+    /// ru_utime + ru_stime（表示用、スケジューラ揺れを含まない）
+    pub cpu_time_used: Duration,
     /// getrusage(RUSAGE_CHILDREN).max_rss から取得（バイト単位）
     pub memory_used_bytes: u64,
     pub status: RunStatus,

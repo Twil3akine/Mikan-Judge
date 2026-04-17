@@ -137,7 +137,7 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
         pool,
         job.id,
         &final_status,
-        Some(run.time_used.as_millis() as u64),
+        Some(run.cpu_time_used.as_millis() as u64),
         Some(run.memory_used_bytes / 1024),
         Some(&stdout),
         Some(&stderr),

@@ -229,9 +229,8 @@ fn parent_collect(
 
     let time_used = start.elapsed();
 
-    // waitpid 後に getrusage で子プロセスのリソース使用量を取得
-    // max_rss は Linux では KB 単位
-    let memory_used_bytes = get_children_max_rss_bytes();
+    // waitpid 後に getrusage で子プロセスのリソース使用量・CPU 時間を取得
+    let (memory_used_bytes, cpu_time_used) = get_children_rusage();
 
     // ここで join することでパイプが完全に読み切られるのを待つ
     let stdout = stdout_handle.join().unwrap_or_default();
@@ -244,6 +243,7 @@ fn parent_collect(
         stderr,
         exit_code,
         time_used,
+        cpu_time_used,
         memory_used_bytes,
         status,
     })
@@ -288,19 +288,26 @@ fn set_rlimit(resource: libc::c_int, soft: u64, hard: u64) {
     unsafe { libc::setrlimit(resource, &limit) };
 }
 
-/// RUSAGE_CHILDREN の max_rss をバイト単位で返す
-/// Linux: KB 単位 → ×1024
-/// macOS: バイト単位 → そのまま
-fn get_children_max_rss_bytes() -> u64 {
+/// RUSAGE_CHILDREN から (rss_bytes, cpu_time) を返す。
+/// max_rss: Linux は KB 単位 → ×1024、macOS はバイト単位
+/// cpu_time: ru_utime + ru_stime（壁時計を含まない安定した値）
+fn get_children_rusage() -> (u64, Duration) {
     let mut usage = unsafe { std::mem::zeroed::<libc::rusage>() };
     let ret = unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut usage) };
     if ret != 0 {
-        return 0;
+        return (0, Duration::ZERO);
     }
+
     #[cfg(target_os = "linux")]
-    return (usage.ru_maxrss as u64).saturating_mul(1024);
+    let rss = (usage.ru_maxrss as u64).saturating_mul(1024);
     #[cfg(not(target_os = "linux"))]
-    return usage.ru_maxrss as u64;
+    let rss = usage.ru_maxrss as u64;
+
+    let user_us = usage.ru_utime.tv_sec as u64 * 1_000_000 + usage.ru_utime.tv_usec as u64;
+    let sys_us  = usage.ru_stime.tv_sec as u64 * 1_000_000 + usage.ru_stime.tv_usec as u64;
+    let cpu = Duration::from_micros(user_us + sys_us);
+
+    (rss, cpu)
 }
 
 /// fd からデータを読み切って Vec<u8> で返す。max_bytes を超えた分は捨てる。
