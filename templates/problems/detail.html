@@ -27,7 +27,7 @@
     </div>
     <div class="form-group">
       <label for="source_code">ソースコード</label>
-      <textarea name="source_code" id="source_code" required></textarea>
+      <textarea name="source_code" id="source_code"></textarea>
     </div>
     <button type="submit" class="btn">提出する</button>
   </form>
@@ -68,5 +68,13 @@ function updateEditorMode() {
   const lang = document.getElementById('language').value;
   editor.setOption('mode', LANG_MODES[lang]);
 }
+
+document.querySelector('form').addEventListener('submit', e => {
+  editor.save();
+  if (!document.getElementById('source_code').value.trim()) {
+    e.preventDefault();
+    alert('ソースコードを入力してください');
+  }
+});
 </script>
 {% endblock %}
