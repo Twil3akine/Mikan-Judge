@@ -120,11 +120,13 @@ textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
   vertical-align: middle;
 }
 
-/* ---- Language badge ---- */
-.lang-cpp    { background: #dbeafe; color: #1d4ed8; }
-.lang-rust   { background: #fee2e2; color: #b91c1c; }
-.lang-python { background: #fef9c3; color: #854d0e; }
-.lang-pypy   { background: #ede9fe; color: #6d28d9; }
+/* ---- CodeMirror ---- */
+.CodeMirror {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: .875rem;
+}
 .badge-ac  { background: #dcfce7; color: var(--ac); }
 .badge-wa  { background: #fee2e2; color: var(--wa); }
 .badge-tle { background: #fef3c7; color: var(--tle); }
