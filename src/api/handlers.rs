@@ -1,28 +1,185 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Form, Path, State},
     http::StatusCode,
-    response::Json,
+    response::{Html, IntoResponse, Json, Redirect, Response},
 };
+use serde::Deserialize;
 use serde_json::{json, Value};
+use tera::Context;
 use uuid::Uuid;
 
 use crate::db::submission as db_sub;
-use crate::types::{JudgeStatus, Submission, SubmitRequest};
+use crate::problem;
+use crate::types::{JudgeStatus, Language, Submission, SubmitRequest};
 use crate::worker::{create_submission, JudgeJob};
 
 use super::AppState;
+
+// ---- エラー型 ----
+
+pub struct HtmlError(anyhow::Error);
+
+impl IntoResponse for HtmlError {
+    fn into_response(self) -> Response {
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {}", self.0)).into_response()
+    }
+}
+
+impl<E: Into<anyhow::Error>> From<E> for HtmlError {
+    fn from(e: E) -> Self { HtmlError(e.into()) }
+}
+
+// ---- ヘルパー ----
+
+fn render(tera: &tera::Tera, template: &str, ctx: Context) -> Result<Html<String>, HtmlError> {
+    Ok(Html(tera.render(template, &ctx)?))
+}
+
+fn verdict_info(status: &JudgeStatus) -> (&'static str, &'static str, bool) {
+    // (verdict label, badge class, is_pending)
+    match status {
+        JudgeStatus::Pending => ("待機中", "pending", true),
+        JudgeStatus::Running => ("ジャッジ中...", "running", true),
+        JudgeStatus::Accepted => ("AC", "ac", false),
+        JudgeStatus::WrongAnswer => ("WA", "wa", false),
+        JudgeStatus::TimeLimitExceeded => ("TLE", "tle", false),
+        JudgeStatus::MemoryLimitExceeded => ("MLE", "mle", false),
+        JudgeStatus::RuntimeError { .. } => ("RE", "re", false),
+        JudgeStatus::CompileError { .. } => ("CE", "ce", false),
+        JudgeStatus::InternalError { .. } => ("IE", "ce", false),
+    }
+}
+
+// ---- HTML ハンドラ ----
+
+pub async fn index() -> Redirect {
+    Redirect::to("/problems")
+}
+
+pub async fn problems_index(
+    State(state): State<AppState>,
+) -> Result<Html<String>, HtmlError> {
+    let problems = problem::load_all(&state.problems_dir);
+    let mut ctx = Context::new();
+    ctx.insert("problems", &problems);
+    render(&state.tera, "problems/index.html", ctx)
+}
+
+pub async fn problems_detail(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Html<String>, HtmlError> {
+    let prob = problem::load_one(&state.problems_dir, &id)
+        .map_err(|_| HtmlError(anyhow::anyhow!("problem '{id}' not found")))?;
+    let mut ctx = Context::new();
+    ctx.insert("problem", &prob);
+    render(&state.tera, "problems/detail.html", ctx)
+}
+
+#[derive(Deserialize)]
+pub struct ProblemSubmitForm {
+    pub language: String,
+    pub source_code: String,
+}
+
+pub async fn problems_submit(
+    State(state): State<AppState>,
+    Path(problem_id): Path<String>,
+    Form(form): Form<ProblemSubmitForm>,
+) -> Result<Response, HtmlError> {
+    let prob = problem::load_one(&state.problems_dir, &problem_id)
+        .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
+
+    let language = match form.language.as_str() {
+        "rust" => Language::Rust,
+        _ => Language::Cpp,
+    };
+
+    // 最初のテストケースで判定（将来: 全テストケース）
+    let tc = &prob.testcases[0];
+
+    let id = Uuid::new_v4();
+    let sub = Submission {
+        id,
+        source_code: form.source_code.clone(),
+        language: language.clone(),
+        problem_id: problem_id.clone(),
+        status: JudgeStatus::Pending,
+        time_used_ms: None,
+        memory_used_kb: None,
+        stdout: None,
+        stderr: None,
+    };
+
+    create_submission(&state.pool, &sub).await?;
+
+    state.job_tx.send(JudgeJob {
+        id,
+        source_code: form.source_code,
+        language,
+        stdin: tc.input.clone(),
+        expected_output: tc.expected.clone(),
+        time_limit_ms: prob.time_limit_ms,
+        memory_limit_kb: prob.memory_limit_kb,
+    }).await.map_err(|e| HtmlError(anyhow::anyhow!("{e}")))?;
+
+    Ok(Redirect::to(&format!("/submissions/{id}")).into_response())
+}
+
+pub async fn submissions_detail(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Html<String>, HtmlError> {
+    let sub = db_sub::get_by_id(&state.pool, id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("submission not found")))?;
+
+    let (verdict, badge_class, is_pending) = verdict_info(&sub.status);
+    let mut ctx = Context::new();
+    ctx.insert("id", &sub.id.to_string());
+    ctx.insert("problem_id", &sub.problem_id);
+    ctx.insert("language", &sub.language.to_db());
+    ctx.insert("source_code", &sub.source_code);
+    ctx.insert("verdict", verdict);
+    ctx.insert("badge_class", badge_class);
+    ctx.insert("is_pending", &is_pending);
+    ctx.insert("time_used_ms", &sub.time_used_ms);
+    ctx.insert("memory_used_kb", &sub.memory_used_kb);
+    ctx.insert("stdout", &sub.stdout);
+    ctx.insert("stderr", &sub.stderr);
+
+    render(&state.tera, "submissions/detail.html", ctx)
+}
+
+pub async fn submissions_poll(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Html<String>, HtmlError> {
+    let sub = db_sub::get_by_id(&state.pool, id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("submission not found")))?;
+
+    let (verdict, badge_class, is_pending) = verdict_info(&sub.status);
+    let mut ctx = Context::new();
+    ctx.insert("id", &sub.id.to_string());
+    ctx.insert("verdict", verdict);
+    ctx.insert("badge_class", badge_class);
+    ctx.insert("is_pending", &is_pending);
+
+    render(&state.tera, "submissions/poll.html", ctx)
+}
+
+// ---- JSON API (後方互換) ----
 
 pub async fn health() -> Json<Value> {
     Json(json!({ "status": "ok" }))
 }
 
-/// POST /submit
-pub async fn submit(
+pub async fn api_submit(
     State(state): State<AppState>,
     Json(req): Json<SubmitRequest>,
 ) -> Result<Json<Value>, StatusCode> {
     let id = Uuid::new_v4();
-
     let sub = Submission {
         id,
         source_code: req.source_code.clone(),
@@ -35,32 +192,25 @@ pub async fn submit(
         stderr: None,
     };
 
-    create_submission(&state.pool, &sub)
-        .await
-        .map_err(|e| {
-            tracing::error!("failed to insert submission: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    create_submission(&state.pool, &sub).await.map_err(|e| {
+        tracing::error!("failed to insert submission: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
-    state
-        .job_tx
-        .send(JudgeJob {
-            id,
-            source_code: req.source_code,
-            language: req.language,
-            stdin: req.stdin,
-            expected_output: req.expected_output,
-            time_limit_ms: req.time_limit_ms,
-            memory_limit_kb: req.memory_limit_kb,
-        })
-        .await
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    state.job_tx.send(JudgeJob {
+        id,
+        source_code: req.source_code,
+        language: req.language,
+        stdin: req.stdin,
+        expected_output: req.expected_output,
+        time_limit_ms: req.time_limit_ms,
+        memory_limit_kb: req.memory_limit_kb,
+    }).await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
     Ok(Json(json!({ "id": id })))
 }
 
-/// GET /result/{id}
-pub async fn get_result(
+pub async fn api_get_result(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Submission>, StatusCode> {
