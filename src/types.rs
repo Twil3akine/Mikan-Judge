@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -153,6 +154,53 @@ pub struct Submission {
     pub stderr: Option<String>,
     /// 各テストケースの短い verdict 文字列 (例: ["AC", "WA", "TLE"])
     pub testcase_results: Option<Vec<String>>,
+}
+
+/// コンテストのステータス（テンプレート表示用）
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub enum ContestStatus {
+    Upcoming,
+    Ongoing,
+    Past,
+}
+
+impl ContestStatus {
+    pub fn label(&self) -> &'static str {
+        match self {
+            ContestStatus::Upcoming => "予定",
+            ContestStatus::Ongoing  => "開催中",
+            ContestStatus::Past     => "終了",
+        }
+    }
+    pub fn badge_class(&self) -> &'static str {
+        match self {
+            ContestStatus::Upcoming => "pending",
+            ContestStatus::Ongoing  => "ac",
+            ContestStatus::Past     => "ce",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Contest {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub start_time: DateTime<Utc>,
+    pub end_time: DateTime<Utc>,
+}
+
+impl Contest {
+    pub fn status(&self) -> ContestStatus {
+        let now = Utc::now();
+        if now < self.start_time {
+            ContestStatus::Upcoming
+        } else if now <= self.end_time {
+            ContestStatus::Ongoing
+        } else {
+            ContestStatus::Past
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

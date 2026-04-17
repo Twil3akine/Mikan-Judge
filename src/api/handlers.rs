@@ -9,7 +9,7 @@ use tera::Context;
 use tower_sessions::Session;
 use uuid::Uuid;
 
-use crate::db::{submission as db_sub, user as db_user};
+use crate::db::{contest as db_contest, submission as db_sub, user as db_user};
 use crate::problem;
 use crate::types::{JudgeStatus, Language, Submission, SubmitRequest};
 use crate::worker::{create_submission, JudgeJob};
@@ -169,8 +169,42 @@ pub async fn logout(session: Session) -> Result<Response, HtmlError> {
 
 // ---- HTML ハンドラ ----
 
-pub async fn index() -> Redirect {
-    Redirect::to("/problems")
+pub async fn index(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<Html<String>, HtmlError> {
+    let lists = db_contest::list_grouped(&state.pool).await?;
+
+    #[derive(Serialize)]
+    struct ContestItem {
+        id: String,
+        title: String,
+        description: String,
+        start_time: String,
+        end_time: String,
+        status_label: &'static str,
+        status_class: &'static str,
+    }
+
+    fn to_item(c: &crate::types::Contest) -> ContestItem {
+        let st = c.status();
+        ContestItem {
+            id: c.id.clone(),
+            title: c.title.clone(),
+            description: c.description.clone(),
+            start_time: c.start_time.format("%Y/%m/%d %H:%M").to_string(),
+            end_time: c.end_time.format("%Y/%m/%d %H:%M").to_string(),
+            status_label: st.label(),
+            status_class: st.badge_class(),
+        }
+    }
+
+    let mut ctx = Context::new();
+    ctx.insert("ongoing",  &lists.ongoing.iter().map(to_item).collect::<Vec<_>>());
+    ctx.insert("upcoming", &lists.upcoming.iter().map(to_item).collect::<Vec<_>>());
+    ctx.insert("past",     &lists.past.iter().map(to_item).collect::<Vec<_>>());
+    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    render(&state.tera, "index.html", ctx)
 }
 
 pub async fn problems_index(

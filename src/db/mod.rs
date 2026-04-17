@@ -1,6 +1,7 @@
 use anyhow::Result;
 use sqlx::PgPool;
 
+pub mod contest;
 pub mod submission;
 pub mod user;
 
