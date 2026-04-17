@@ -8,6 +8,7 @@
     <thead>
       <tr>
         <th>タイトル</th>
+        <th>配点</th>
         <th>時間制限</th>
         <th>メモリ制限</th>
       </tr>
@@ -16,8 +17,9 @@
       {% for p in problems %}
       <tr>
         <td><a href="/problems/{{ p.id }}">{{ p.title }}</a></td>
+        <td>{{ p.score }} 点</td>
         <td>{{ p.time_limit_ms }} ms</td>
-        <td>{{ p.memory_limit_kb | filesizeformat }}</td>
+        <td>{{ p.memory_limit_kb / 1024 }} MiB</td>
       </tr>
       {% else %}
       <tr><td colspan="3" style="color:var(--muted);text-align:center">問題がありません</td></tr>

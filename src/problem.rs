@@ -10,10 +10,13 @@ pub struct ProblemMeta {
     pub time_limit_ms: u64,
     #[serde(default = "default_memory_limit")]
     pub memory_limit_kb: u64,
+    #[serde(default = "default_score")]
+    pub score: u64,
 }
 
 fn default_time_limit() -> u64 { 2000 }
 fn default_memory_limit() -> u64 { 262144 }
+fn default_score() -> u64 { 100 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Problem {
@@ -21,6 +24,7 @@ pub struct Problem {
     pub title: String,
     pub time_limit_ms: u64,
     pub memory_limit_kb: u64,
+    pub score: u64,
     pub html_content: String,
     #[serde(skip)]
     pub testcases: Vec<Testcase>,
@@ -70,6 +74,7 @@ pub fn load_one(problems_dir: &Path, id: &str) -> Result<Problem> {
         title: meta.title,
         time_limit_ms: meta.time_limit_ms,
         memory_limit_kb: meta.memory_limit_kb,
+        score: meta.score,
         html_content,
         testcases,
     })
