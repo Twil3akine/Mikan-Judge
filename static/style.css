@@ -76,10 +76,10 @@ input[type="password"],
 input[type="email"] {
   display: block;
   width: 100%;
-  padding: .65rem .875rem;
+  padding: .8rem 1rem;
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
-  font-size: .95rem;
+  font-size: 1rem;
   background: #fff;
   color: var(--text);
   transition: border-color .15s, box-shadow .15s;
@@ -132,6 +132,7 @@ textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
 }
 .btn:hover { background: var(--primary-dark); }
 .btn:disabled { background: var(--muted); cursor: not-allowed; }
+.btn-block { display: block; width: 100%; text-align: center; }
 
 /* ---- Verdict badge ---- */
 .badge {
