@@ -35,8 +35,14 @@
           pg_ctl -D "$PGDATA" stop
         '';
 
+        # マイグレーションを実行する（DB が起動している必要がある）
+        dbMigrate = pkgs.writeShellScriptBin "db-migrate" ''
+          sqlx migrate run --database-url "$DATABASE_URL"
+        '';
+
         dev = pkgs.writeShellScriptBin "dev" ''
           pg_start
+          db-migrate
           trap 'pg_stop' EXIT INT TERM
           cargo watch -x run
         '';
@@ -55,6 +61,7 @@
             pkgs.sqlx-cli
             pgStart
             pgStop
+            dbMigrate
             dev
           ] ++ linuxPkgs;
 
