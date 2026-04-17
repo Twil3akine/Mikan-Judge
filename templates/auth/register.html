@@ -2,26 +2,32 @@
 {% block title %}新規登録 | MikanJudge{% endblock %}
 
 {% block content %}
-<div style="max-width:360px;margin:4rem auto">
-  <h1>新規登録</h1>
-  <div class="card">
+<div style="max-width:380px;margin:4rem auto">
+  <div style="text-align:center;margin-bottom:1.5rem">
+    <div style="font-size:2.5rem">🍊</div>
+    <h1 style="margin-bottom:.25rem">新規登録</h1>
+    <p style="color:var(--muted);font-size:.9rem">アカウントを作成してください</p>
+  </div>
+  <div class="card" style="padding:2rem">
     {% if error %}
-    <p style="color:var(--re);margin-top:0">{{ error }}</p>
+    <div style="background:#fee2e2;border:1px solid #fecaca;border-radius:var(--radius);padding:.75rem 1rem;margin-bottom:1rem;color:var(--wa);font-size:.9rem">
+      {{ error }}
+    </div>
     {% endif %}
     <form method="POST" action="/register">
       <div class="form-group">
-        <label for="username">ユーザ名 <small style="color:var(--muted)">(3〜20文字)</small></label>
+        <label for="username">ユーザ名 <small style="color:var(--muted);font-weight:400">(3〜20文字)</small></label>
         <input type="text" name="username" id="username" required autocomplete="username"
-               minlength="3" maxlength="20">
+               minlength="3" maxlength="20" placeholder="username">
       </div>
-      <div class="form-group">
-        <label for="password">パスワード <small style="color:var(--muted)">(6文字以上)</small></label>
+      <div class="form-group" style="margin-bottom:1.5rem">
+        <label for="password">パスワード <small style="color:var(--muted);font-weight:400">(6文字以上)</small></label>
         <input type="password" name="password" id="password" required autocomplete="new-password"
-               minlength="6">
+               minlength="6" placeholder="••••••••">
       </div>
-      <button type="submit" class="btn" style="width:100%">登録する</button>
+      <button type="submit" class="btn" style="width:100%;padding:.75rem">登録する</button>
     </form>
-    <p style="margin-top:1rem;text-align:center;color:var(--muted)">
+    <p style="margin-top:1.25rem;text-align:center;color:var(--muted);font-size:.875rem">
       すでにアカウントをお持ちの方は <a href="/login">ログイン</a>
     </p>
   </div>
