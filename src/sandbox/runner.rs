@@ -91,9 +91,10 @@ fn child_exec(
     let cpu_secs = config.time_limit.as_secs().max(1) + 1;
     set_rlimit(libc::RLIMIT_CPU as _, cpu_secs, cpu_secs + 1);
 
-    // 仮想メモリ上限（MLE 検出用に 2x を上限にする）
-    let mem = config.memory_limit_bytes.saturating_mul(2);
-    set_rlimit(libc::RLIMIT_AS as _, mem, mem);
+    // 仮想メモリ上限: None のときは制限なし（Python 等インタプリタは起動時に大量の仮想空間を使うため）
+    if let Some(mem) = config.vm_limit_bytes {
+        set_rlimit(libc::RLIMIT_AS as _, mem, mem);
+    }
 
     // スタックサイズ: 64 MiB
     let stack: u64 = 64 * 1024 * 1024;

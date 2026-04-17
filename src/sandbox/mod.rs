@@ -14,9 +14,20 @@ pub mod seccomp;
 #[derive(Debug, Clone)]
 pub struct SandboxConfig {
     pub time_limit: Duration,
-    pub memory_limit_bytes: u64,
     /// 標準出力の最大バイト数（超えたら切り捨て）
     pub max_output_bytes: usize,
+    /// RLIMIT_AS の上限。None = 制限なし（インタプリタ言語向け）
+    pub vm_limit_bytes: Option<u64>,
+}
+
+/// `compile()` の結果
+pub struct CompileOutput {
+    pub executable: PathBuf,
+    pub run_args: Vec<String>,
+    /// Some(msg) = CE、None = 成功
+    pub error: Option<String>,
+    /// 成功時のコンパイラ出力（警告など）
+    pub warnings: String,
 }
 
 /// サンドボックス内実行の結果
@@ -43,21 +54,16 @@ pub enum RunStatus {
 }
 
 /// ソースコードをコンパイル（またはシンタックスチェック）して実行に必要な情報を返す。
-///
-/// 戻り値: `(実行コマンド, 追加引数, コンパイルエラー)`
-/// - コンパイル言語: `("work_dir/solution", [], None/Some(err))`
-/// - インタプリタ言語: `("python3", ["work_dir/solution.py"], None/Some(err))`
 pub async fn compile(
     source_code: &str,
     language: &Language,
     work_dir: &Path,
-) -> Result<(PathBuf, Vec<String>, Option<String>)> {
+) -> Result<CompileOutput> {
     let src_path = work_dir.join(format!("solution.{}", language.extension()));
     tokio::fs::write(&src_path, source_code).await?;
 
     if language.is_interpreted() {
         let interp = language.interpreter();
-        // 構文チェック（py_compile）
         let result = timeout(
             Duration::from_secs(10),
             Command::new(interp)
@@ -66,23 +72,25 @@ pub async fn compile(
         )
         .await;
 
-        let compile_err = match result {
-            Err(_) => Some("構文チェックがタイムアウトしました".to_string()),
-            Ok(Err(e)) => Some(format!("インタプリタの起動に失敗しました: {e}")),
+        let (error, warnings) = match result {
+            Err(_) => (Some("構文チェックがタイムアウトしました".to_string()), String::new()),
+            Ok(Err(e)) => (Some(format!("インタプリタの起動に失敗しました: {e}")), String::new()),
             Ok(Ok(out)) => {
+                let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
                 if out.status.success() {
-                    None
+                    (None, stderr)
                 } else {
-                    Some(String::from_utf8_lossy(&out.stderr).into_owned())
+                    (Some(stderr), String::new())
                 }
             }
         };
 
-        Ok((
-            PathBuf::from(interp),
-            vec![src_path.to_str().unwrap().to_string()],
-            compile_err,
-        ))
+        Ok(CompileOutput {
+            executable: PathBuf::from(interp),
+            run_args: vec![src_path.to_str().unwrap().to_string()],
+            error,
+            warnings,
+        })
     } else {
         let output_path = work_dir.join("solution");
         let args = language.compile_args(
@@ -100,11 +108,11 @@ pub async fn compile(
             Err(_) => anyhow::bail!("コンパイルが30秒でタイムアウトしました"),
             Ok(Err(e)) => anyhow::bail!("コンパイラの起動に失敗しました: {e}"),
             Ok(Ok(out)) => {
+                let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
                 if out.status.success() {
-                    Ok((output_path, vec![], None))
+                    Ok(CompileOutput { executable: output_path, run_args: vec![], error: None, warnings: stderr })
                 } else {
-                    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-                    Ok((output_path, vec![], Some(stderr)))
+                    Ok(CompileOutput { executable: output_path, run_args: vec![], error: Some(stderr), warnings: String::new() })
                 }
             }
         }

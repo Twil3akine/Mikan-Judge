@@ -70,7 +70,7 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
     };
 
     // --- コンパイル ---
-    let (exe, run_args, compile_err) =
+    let compiled =
         match sandbox::compile(&job.source_code, &job.language, work_dir.path()).await {
             Ok(r) => r,
             Err(e) => {
@@ -80,9 +80,9 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
             }
         };
 
-    if let Some(msg) = compile_err {
-        let status = JudgeStatus::CompileError { message: msg };
-        if let Err(e) = db_sub::update_result(pool, job.id, &status, None, None, None, None).await
+    if let Some(ref msg) = compiled.error {
+        let status = JudgeStatus::CompileError { message: msg.clone() };
+        if let Err(e) = db_sub::update_result(pool, job.id, &status, None, None, None, Some(msg)).await
         {
             tracing::error!(%job.id, "failed to update compile error: {e}");
         }
@@ -90,13 +90,15 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
     }
 
     // --- サンドボックス実行 ---
+    let mem = job.memory_limit_kb * 1024;
     let cfg = SandboxConfig {
         time_limit: Duration::from_millis(job.time_limit_ms),
-        memory_limit_bytes: job.memory_limit_kb * 1024,
         max_output_bytes: 16 * 1024 * 1024,
+        // インタプリタ言語は仮想メモリ制限なし（インタプリタ自体が大量の VA を使うため）
+        vm_limit_bytes: if job.language.is_interpreted() { None } else { Some(mem * 2) },
     };
 
-    let run = match sandbox::run_in_sandbox(&exe, run_args, job.stdin.as_bytes(), cfg).await {
+    let run = match sandbox::run_in_sandbox(&compiled.executable, compiled.run_args, job.stdin.as_bytes(), cfg).await {
         Ok(r) => r,
         Err(e) => {
             set_status(pool, job.id, JudgeStatus::InternalError { message: e.to_string() }).await;
@@ -121,7 +123,15 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
     };
 
     let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&run.stderr).into_owned();
+    let runtime_stderr = String::from_utf8_lossy(&run.stderr).into_owned();
+    // コンパイル警告があれば先頭に表示
+    let stderr = if compiled.warnings.is_empty() {
+        runtime_stderr
+    } else if runtime_stderr.is_empty() {
+        format!("[Compile warnings]\n{}", compiled.warnings)
+    } else {
+        format!("[Compile warnings]\n{}\n[Runtime stderr]\n{runtime_stderr}", compiled.warnings)
+    };
 
     if let Err(e) = db_sub::update_result(
         pool,
