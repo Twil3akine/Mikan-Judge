@@ -59,6 +59,7 @@
             pkgs.openssl.dev
             pkgs.cargo-watch
             pkgs.sqlx-cli
+            pkgs.python3
             pgStart
             pgStop
             dbMigrate

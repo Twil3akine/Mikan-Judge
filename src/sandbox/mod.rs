@@ -64,9 +64,14 @@ pub async fn compile(
 
     if language.is_interpreted() {
         let interp = language.interpreter();
+
+        // `which` で絶対パスを解決する。PATH の曖昧さを排除し、
+        // macOS のスタブ (/usr/bin/python3) を誤って使わないようにする。
+        let interp_path = resolve_interpreter(interp).await?;
+
         let result = timeout(
             Duration::from_secs(10),
-            Command::new(interp)
+            Command::new(&interp_path)
                 .args(["-m", "py_compile", src_path.to_str().unwrap()])
                 .output(),
         )
@@ -86,7 +91,7 @@ pub async fn compile(
         };
 
         Ok(CompileOutput {
-            executable: PathBuf::from(interp),
+            executable: interp_path,
             run_args: vec![src_path.to_str().unwrap().to_string()],
             error,
             warnings,
@@ -117,6 +122,14 @@ pub async fn compile(
             }
         }
     }
+}
+
+/// `which <name>` で絶対パスを解決する。見つからなければエラー。
+async fn resolve_interpreter(name: &str) -> Result<PathBuf> {
+    let out = Command::new("which").arg(name).output().await?;
+    anyhow::ensure!(out.status.success(), "interpreter '{name}' not found in PATH");
+    let path = String::from_utf8(out.stdout)?.trim().to_string();
+    Ok(PathBuf::from(path))
 }
 
 /// 実行ファイルをサンドボックス内で実行して結果を返す。
