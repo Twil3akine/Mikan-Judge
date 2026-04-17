@@ -132,8 +132,17 @@ pub enum JudgeStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    pub id: Uuid,
+    pub username: String,
+    #[serde(skip_serializing)]
+    pub password_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Submission {
     pub id: Uuid,
+    pub user_id: Option<Uuid>,
     pub source_code: String,
     pub language: Language,
     pub problem_id: String,
