@@ -168,6 +168,11 @@ fn parent_collect(
     config: &SandboxConfig,
     start: Instant,
 ) -> Result<RunResult> {
+    // fork 直後にベースラインを取る。
+    // RUSAGE_CHILDREN はプロセス全体の累積値なので差分を取らないと
+    // 2 回目以降の提出に前回分が加算されてしまう。
+    let rusage_baseline = get_children_rusage();
+
     // 子プロセス側のパイプ端を親では閉じる
     unsafe {
         libc::close(stdin_r);
@@ -229,8 +234,10 @@ fn parent_collect(
 
     let time_used = start.elapsed();
 
-    // waitpid 後に getrusage で子プロセスのリソース使用量・CPU 時間を取得
-    let (memory_used_bytes, cpu_time_used) = get_children_rusage();
+    // waitpid 後に差分を取ることで今回の子プロセス分だけを得る
+    let rusage_after = get_children_rusage();
+    let memory_used_bytes = rusage_after.0;
+    let cpu_time_used = rusage_after.1.saturating_sub(rusage_baseline.1);
 
     // ここで join することでパイプが完全に読み切られるのを待つ
     let stdout = stdout_handle.join().unwrap_or_default();
