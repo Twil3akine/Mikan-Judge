@@ -185,10 +185,23 @@ pub async fn submissions_detail(
         .ok_or_else(|| HtmlError(anyhow::anyhow!("submission not found")))?;
 
     let (verdict, badge_class, is_pending) = verdict_info(&sub.status);
+
+    let problem_title = problem::load_one(&state.problems_dir, &sub.problem_id)
+        .map(|p| p.title)
+        .unwrap_or_else(|_| sub.problem_id.clone());
+
+    // highlight.js の言語識別子（pypy は python として扱う）
+    let lang_hljs = match sub.language.to_db() {
+        "pypy" => "python",
+        other => other,
+    };
+
     let mut ctx = Context::new();
     ctx.insert("id", &sub.id.to_string());
     ctx.insert("problem_id", &sub.problem_id);
+    ctx.insert("problem_title", &problem_title);
     ctx.insert("language", &sub.language.to_db());
+    ctx.insert("lang_hljs", lang_hljs);
     ctx.insert("source_code", &sub.source_code);
     ctx.insert("verdict", verdict);
     ctx.insert("badge_class", badge_class);

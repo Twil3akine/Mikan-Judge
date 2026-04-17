@@ -130,7 +130,17 @@ textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
 .meta-row { display: flex; gap: 2rem; margin: 1rem 0; font-size: .9rem; color: var(--muted); }
 .meta-row span b { color: var(--text); }
 
-.code-block {
+/* ソースコードハイライト（highlight.js の pre>code） */
+pre code.hljs {
+  border-radius: var(--radius);
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: .8rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* stdout / stderr などプレーンテキスト用 */
+pre.code-block {
   background: #1e1e2e;
   color: #cdd6f4;
   border-radius: var(--radius);

@@ -16,7 +16,7 @@
     </div>
   </div>
   <div class="meta-row">
-    <span>問題: <b><a href="/problems/{{ problem_id }}">{{ problem_id }}</a></b></span>
+    <span>問題: <b><a href="/problems/{{ problem_id }}">{{ problem_title }}</a></b></span>
     <span>言語: <b>{{ language }}</b></span>
     {% if time_used_ms %}
     <span>実行時間: <b>{{ time_used_ms }} ms</b></span>
@@ -29,20 +29,20 @@
 
 <div class="card">
   <h2 style="margin-top:0">ソースコード</h2>
-  <div class="code-block">{{ source_code }}</div>
+  <pre><code class="language-{{ lang_hljs }}">{{ source_code }}</code></pre>
 </div>
 
 {% if stderr and stderr != "" %}
 <div class="card">
   <h2 style="margin-top:0">エラー出力</h2>
-  <div class="code-block">{{ stderr }}</div>
+  <pre class="code-block">{{ stderr }}</pre>
 </div>
 {% endif %}
 
 {% if stdout and stdout != "" %}
 <div class="card">
   <h2 style="margin-top:0">標準出力</h2>
-  <div class="code-block">{{ stdout }}</div>
+  <pre class="code-block">{{ stdout }}</pre>
 </div>
 {% endif %}
 {% endblock %}
