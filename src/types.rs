@@ -9,6 +9,20 @@ pub enum Language {
 }
 
 impl Language {
+    pub fn to_db(&self) -> &'static str {
+        match self {
+            Language::Cpp => "cpp",
+            Language::Rust => "rust",
+        }
+    }
+
+    pub fn from_db(s: &str) -> Self {
+        match s {
+            "rust" => Language::Rust,
+            _ => Language::Cpp,
+        }
+    }
+
     pub fn extension(&self) -> &'static str {
         match self {
             Language::Cpp => "cpp",
@@ -40,6 +54,36 @@ impl Language {
                 "-C".to_string(),
                 "opt-level=2".to_string(),
             ],
+        }
+    }
+}
+
+impl JudgeStatus {
+    pub fn to_db(&self) -> &'static str {
+        match self {
+            JudgeStatus::Pending => "pending",
+            JudgeStatus::Running => "running",
+            JudgeStatus::Accepted => "accepted",
+            JudgeStatus::WrongAnswer => "wrong_answer",
+            JudgeStatus::TimeLimitExceeded => "time_limit_exceeded",
+            JudgeStatus::MemoryLimitExceeded => "memory_limit_exceeded",
+            JudgeStatus::RuntimeError { .. } => "runtime_error",
+            JudgeStatus::CompileError { .. } => "compile_error",
+            JudgeStatus::InternalError { .. } => "internal_error",
+        }
+    }
+
+    pub fn from_db(s: &str) -> Self {
+        match s {
+            "running" => JudgeStatus::Running,
+            "accepted" => JudgeStatus::Accepted,
+            "wrong_answer" => JudgeStatus::WrongAnswer,
+            "time_limit_exceeded" => JudgeStatus::TimeLimitExceeded,
+            "memory_limit_exceeded" => JudgeStatus::MemoryLimitExceeded,
+            "runtime_error" => JudgeStatus::RuntimeError { exit_code: -1 },
+            "compile_error" => JudgeStatus::CompileError { message: String::new() },
+            "internal_error" => JudgeStatus::InternalError { message: String::new() },
+            _ => JudgeStatus::Pending,
         }
     }
 }
