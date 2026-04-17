@@ -115,10 +115,9 @@ fn child_exec(
     }
 
     // ---- seccomp: システムコール制限 ----
+    // non-linux では apply_filter() が Ok(()) を返すだけなので常に呼んでよい
 
-    #[cfg(target_os = "linux")]
     if let Err(e) = super::seccomp::apply_filter() {
-        // fork 後は eprintln! もリスクがあるが、exec 直前なので許容
         let msg = format!("seccomp setup failed: {e}\n");
         unsafe {
             libc::write(
