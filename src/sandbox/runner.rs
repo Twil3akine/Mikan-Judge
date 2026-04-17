@@ -20,6 +20,7 @@ use super::{RunResult, RunStatus, SandboxConfig};
 
 pub fn run_sandboxed_blocking(
     executable: &Path,
+    run_args: &[String],
     stdin_data: &[u8],
     config: &SandboxConfig,
 ) -> Result<RunResult> {
@@ -36,7 +37,7 @@ pub fn run_sandboxed_blocking(
         ForkResult::Child => {
             child_exec(
                 stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w,
-                executable, config,
+                executable, run_args, config,
             )
         }
         ForkResult::Parent { child } => parent_collect(
@@ -56,7 +57,7 @@ fn make_pipe() -> Result<(RawFd, RawFd)> {
 
 // ---- 子プロセス側 ----
 
-/// 子プロセスでサンドボックスを設定してから `execve` する。
+/// 子プロセスでサンドボックスを設定してから `execvp` する。
 /// この関数は絶対に返らない（`-> !`）。
 fn child_exec(
     stdin_r: RawFd,
@@ -66,6 +67,7 @@ fn child_exec(
     stderr_r: RawFd,
     stderr_w: RawFd,
     executable: &Path,
+    run_args: &[String],
     config: &SandboxConfig,
 ) -> ! {
     // stdin/stdout/stderr を再配線
@@ -129,18 +131,25 @@ fn child_exec(
         }
     }
 
-    // ---- execve ----
+    // ---- execvp ----
+    // PATH を使って解決するので、インタプリタ名（"python3" 等）もそのまま渡せる。
 
     let path = match CString::new(executable.as_os_str().as_bytes()) {
         Ok(p) => p,
         Err(_) => unsafe { libc::_exit(1) },
     };
-    let args: &[CString] = &[path.clone()];
-    let env: &[CString] = &[];
 
-    let _ = nix::unistd::execve(&path, args, env);
+    let mut argv: Vec<CString> = vec![path.clone()];
+    for a in run_args {
+        match CString::new(a.as_bytes()) {
+            Ok(s) => argv.push(s),
+            Err(_) => unsafe { libc::_exit(1) },
+        }
+    }
 
-    // execve が返った = 失敗
+    let _ = nix::unistd::execvp(&path, &argv);
+
+    // execvp が返った = 失敗
     unsafe { libc::_exit(1) }
 }
 

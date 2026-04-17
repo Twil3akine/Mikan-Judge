@@ -70,7 +70,7 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
     };
 
     // --- コンパイル ---
-    let (exe, compile_err) =
+    let (exe, run_args, compile_err) =
         match sandbox::compile(&job.source_code, &job.language, work_dir.path()).await {
             Ok(r) => r,
             Err(e) => {
@@ -96,7 +96,7 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
         max_output_bytes: 16 * 1024 * 1024,
     };
 
-    let run = match sandbox::run_in_sandbox(&exe, job.stdin.as_bytes(), cfg).await {
+    let run = match sandbox::run_in_sandbox(&exe, run_args, job.stdin.as_bytes(), cfg).await {
         Ok(r) => r,
         Err(e) => {
             set_status(pool, job.id, JudgeStatus::InternalError { message: e.to_string() }).await;
