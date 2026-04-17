@@ -5,7 +5,7 @@
 <div style="display:flex;gap:2rem;align-items:baseline;margin-bottom:.5rem">
   <h1>{{ problem.title }}</h1>
   <span style="color:var(--muted);font-size:.875rem">
-    時間制限: {{ problem.time_limit_ms }} ms　／　メモリ制限: {{ problem.memory_limit_kb | filesizeformat }}
+    配点: {{ problem.score }} 点　／　時間制限: {{ problem.time_limit_ms }} ms　／　メモリ制限: {{ problem.memory_limit_kb / 1024 }} MiB
   </span>
 </div>
 
@@ -58,7 +58,6 @@ document.addEventListener('DOMContentLoaded', () => {
     indentUnit:    4,
     tabSize:       4,
     indentWithTabs: false,
-    autofocus:     true,
     extraKeys:     { Tab: cm => cm.execCommand('insertSoftTab') },
   });
   editor.setSize('100%', '340px');

@@ -11,7 +11,9 @@
         <th>問題</th>
         <th>言語</th>
         <th>結果</th>
+        <th>ケース</th>
         <th>実行時間</th>
+        <th>メモリ</th>
       </tr>
     </thead>
     <tbody>
@@ -20,7 +22,9 @@
         <td><a href="/problems/{{ s.problem_id }}" onclick="event.stopPropagation()">{{ s.problem_title }}</a></td>
         <td>{{ s.language }}</td>
         <td><span class="badge badge-{{ s.badge_class }}">{{ s.verdict }}</span></td>
+        <td>{% if s.tc_summary %}{{ s.tc_summary }} AC{% else %}—{% endif %}</td>
         <td>{% if s.time_used_ms %}{{ s.time_used_ms }} ms{% else %}—{% endif %}</td>
+        <td>{% if s.memory_used_kb %}{{ s.memory_used_kb }} KB{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

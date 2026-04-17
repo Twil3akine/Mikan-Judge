@@ -97,9 +97,6 @@ pub async fn problems_submit(
         _ => Language::Cpp,
     };
 
-    // 最初のテストケースで判定（将来: 全テストケース）
-    let tc = &prob.testcases[0];
-
     let id = Uuid::new_v4();
     let sub = Submission {
         id,
@@ -111,16 +108,20 @@ pub async fn problems_submit(
         memory_used_kb: None,
         stdout: None,
         stderr: None,
+        testcase_results: None,
     };
 
     create_submission(&state.pool, &sub).await?;
+
+    let testcases = prob.testcases.iter()
+        .map(|tc| (tc.input.clone(), tc.expected.clone()))
+        .collect();
 
     state.job_tx.send(JudgeJob {
         id,
         source_code: form.source_code,
         language,
-        stdin: tc.input.clone(),
-        expected_output: tc.expected.clone(),
+        testcases,
         time_limit_ms: prob.time_limit_ms,
         memory_limit_kb: prob.memory_limit_kb,
     }).await.map_err(|e| HtmlError(anyhow::anyhow!("{e}")))?;
@@ -137,6 +138,8 @@ struct SubmissionListItem {
     verdict: &'static str,
     badge_class: &'static str,
     time_used_ms: Option<u64>,
+    memory_used_kb: Option<u64>,
+    tc_summary: Option<String>,
 }
 
 pub async fn submissions_index(
@@ -168,6 +171,12 @@ pub async fn submissions_index(
                 verdict,
                 badge_class,
                 time_used_ms: s.time_used_ms,
+                memory_used_kb: s.memory_used_kb,
+                tc_summary: s.testcase_results.as_ref().map(|v| {
+                    let total = v.len();
+                    let ac = v.iter().filter(|s| s.as_str() == "AC").count();
+                    format!("{ac}/{total}")
+                }),
             }
         })
         .collect();
@@ -186,9 +195,9 @@ pub async fn submissions_detail(
 
     let (verdict, badge_class, is_pending) = verdict_info(&sub.status);
 
-    let problem_title = problem::load_one(&state.problems_dir, &sub.problem_id)
-        .map(|p| p.title)
-        .unwrap_or_else(|_| sub.problem_id.clone());
+    let prob = problem::load_one(&state.problems_dir, &sub.problem_id).ok();
+    let problem_title = prob.as_ref().map(|p| p.title.clone()).unwrap_or_else(|| sub.problem_id.clone());
+    let problem_score = prob.as_ref().map(|p| p.score);
 
     // highlight.js の言語識別子（pypy は python として扱う）
     let lang_hljs = match sub.language.to_db() {
@@ -210,6 +219,9 @@ pub async fn submissions_detail(
     ctx.insert("memory_used_kb", &sub.memory_used_kb);
     ctx.insert("stdout", &sub.stdout);
     ctx.insert("stderr", &sub.stderr);
+    ctx.insert("testcase_results", &sub.testcase_results);
+    ctx.insert("problem_score", &problem_score);
+    ctx.insert("is_accepted", &matches!(sub.status, JudgeStatus::Accepted));
 
     render(&state.tera, "submissions/detail.html", ctx)
 }
@@ -253,6 +265,7 @@ pub async fn api_submit(
         memory_used_kb: None,
         stdout: None,
         stderr: None,
+        testcase_results: None,
     };
 
     create_submission(&state.pool, &sub).await.map_err(|e| {
@@ -264,8 +277,7 @@ pub async fn api_submit(
         id,
         source_code: req.source_code,
         language: req.language,
-        stdin: req.stdin,
-        expected_output: req.expected_output,
+        testcases: vec![(req.stdin, req.expected_output)],
         time_limit_ms: req.time_limit_ms,
         memory_limit_kb: req.memory_limit_kb,
     }).await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
