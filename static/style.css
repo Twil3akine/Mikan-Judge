@@ -76,7 +76,8 @@ input[type="password"],
 input[type="email"] {
   display: block;
   width: 100%;
-  padding: 1rem 1.1rem;
+  height: 1rem;
+  padding: 1.25rem 0.75rem;
   border: 1.5px solid var(--border);
   border-radius: 12px;
   font-size: 1rem;
