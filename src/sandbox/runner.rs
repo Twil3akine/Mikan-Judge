@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use nix::sys::signal::Signal;
-use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+use nix::sys::wait::WaitStatus;
 use nix::unistd::{fork, ForkResult, Pid};
 
 use super::{RunResult, RunStatus, SandboxConfig};
@@ -168,11 +168,6 @@ fn parent_collect(
     config: &SandboxConfig,
     start: Instant,
 ) -> Result<RunResult> {
-    // fork 直後にベースラインを取る。
-    // RUSAGE_CHILDREN はプロセス全体の累積値なので差分を取らないと
-    // 2 回目以降の提出に前回分が加算されてしまう。
-    let rusage_baseline = get_children_rusage();
-
     // 子プロセス側のパイプ端を親では閉じる
     unsafe {
         libc::close(stdin_r);
@@ -207,37 +202,57 @@ fn parent_collect(
     let stdout_handle = std::thread::spawn(move || drain_fd(stdout_r, max_out));
     let stderr_handle = std::thread::spawn(move || drain_fd(stderr_r, 65_536));
 
-    // 子プロセスの終了をポーリング（ウォールクロックのタイムリミット付き）
+    // wait4 でポーリング。
+    // waitpid + getrusage(RUSAGE_CHILDREN) と違い、wait4 は「この特定の子プロセス」の
+    // リソース使用量を直接返すため、他ワーカーとの混入や累積問題が起きない。
     let deadline = start + config.time_limit + Duration::from_millis(100);
     let mut final_status: Option<WaitStatus> = None;
+    let mut child_rusage: libc::rusage = unsafe { std::mem::zeroed() };
     let mut killed = false;
 
     loop {
-        match waitpid(child, Some(WaitPidFlag::WNOHANG)) {
-            Ok(WaitStatus::StillAlive) => {
-                if Instant::now() >= deadline {
-                    let _ = nix::sys::signal::kill(child, Signal::SIGKILL);
-                    killed = true;
-                    // 子を確実に回収
-                    final_status = waitpid(child, None).ok();
-                    break;
+        let mut wstatus: libc::c_int = 0;
+        let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+        let ret = unsafe {
+            libc::wait4(child.as_raw(), &mut wstatus, libc::WNOHANG, &mut ru)
+        };
+
+        if ret == child.as_raw() {
+            child_rusage = ru;
+            final_status = Some(parse_wait_status(child, wstatus));
+            break;
+        } else if ret == 0 {
+            if Instant::now() >= deadline {
+                let _ = nix::sys::signal::kill(child, Signal::SIGKILL);
+                killed = true;
+                // ブロッキングで回収
+                let ret2 = unsafe {
+                    libc::wait4(child.as_raw(), &mut wstatus, 0, &mut child_rusage)
+                };
+                if ret2 == child.as_raw() {
+                    final_status = Some(parse_wait_status(child, wstatus));
                 }
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            Ok(ws) => {
-                final_status = Some(ws);
                 break;
             }
-            Err(_) => break,
+            std::thread::sleep(Duration::from_millis(5));
+        } else {
+            break; // エラー
         }
     }
 
     let time_used = start.elapsed();
 
-    // waitpid 後に差分を取ることで今回の子プロセス分だけを得る
-    let rusage_after = get_children_rusage();
-    let memory_used_bytes = rusage_after.0;
-    let cpu_time_used = rusage_after.1.saturating_sub(rusage_baseline.1);
+    // wait4 から直接取得した値を使う
+    let user_us = child_rusage.ru_utime.tv_sec as u64 * 1_000_000
+        + child_rusage.ru_utime.tv_usec as u64;
+    let sys_us = child_rusage.ru_stime.tv_sec as u64 * 1_000_000
+        + child_rusage.ru_stime.tv_usec as u64;
+    let cpu_time_used = Duration::from_micros(user_us + sys_us);
+
+    #[cfg(target_os = "linux")]
+    let memory_used_bytes = (child_rusage.ru_maxrss as u64).saturating_mul(1024);
+    #[cfg(not(target_os = "linux"))]
+    let memory_used_bytes = child_rusage.ru_maxrss as u64;
 
     // ここで join することでパイプが完全に読み切られるのを待つ
     let stdout = stdout_handle.join().unwrap_or_default();
@@ -295,26 +310,16 @@ fn set_rlimit(resource: libc::c_int, soft: u64, hard: u64) {
     unsafe { libc::setrlimit(resource, &limit) };
 }
 
-/// RUSAGE_CHILDREN から (rss_bytes, cpu_time) を返す。
-/// max_rss: Linux は KB 単位 → ×1024、macOS はバイト単位
-/// cpu_time: ru_utime + ru_stime（壁時計を含まない安定した値）
-fn get_children_rusage() -> (u64, Duration) {
-    let mut usage = unsafe { std::mem::zeroed::<libc::rusage>() };
-    let ret = unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut usage) };
-    if ret != 0 {
-        return (0, Duration::ZERO);
+/// wait4 から得た生ステータスを WaitStatus に変換する。
+fn parse_wait_status(pid: Pid, raw: libc::c_int) -> WaitStatus {
+    if libc::WIFEXITED(raw) {
+        WaitStatus::Exited(pid, libc::WEXITSTATUS(raw))
+    } else if libc::WIFSIGNALED(raw) {
+        let sig = Signal::try_from(libc::WTERMSIG(raw)).unwrap_or(Signal::SIGKILL);
+        WaitStatus::Signaled(pid, sig, false)
+    } else {
+        WaitStatus::StillAlive
     }
-
-    #[cfg(target_os = "linux")]
-    let rss = (usage.ru_maxrss as u64).saturating_mul(1024);
-    #[cfg(not(target_os = "linux"))]
-    let rss = usage.ru_maxrss as u64;
-
-    let user_us = usage.ru_utime.tv_sec as u64 * 1_000_000 + usage.ru_utime.tv_usec as u64;
-    let sys_us  = usage.ru_stime.tv_sec as u64 * 1_000_000 + usage.ru_stime.tv_usec as u64;
-    let cpu = Duration::from_micros(user_us + sys_us);
-
-    (rss, cpu)
 }
 
 /// fd からデータを読み切って Vec<u8> で返す。max_bytes を超えた分は捨てる。
