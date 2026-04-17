@@ -132,6 +132,7 @@ pub async fn problems_submit(
 struct SubmissionListItem {
     id: String,
     problem_id: String,
+    problem_title: String,
     language: String,
     verdict: &'static str,
     badge_class: &'static str,
@@ -142,13 +143,27 @@ pub async fn submissions_index(
     State(state): State<AppState>,
 ) -> Result<Html<String>, HtmlError> {
     let subs = db_sub::list_recent(&state.pool, 50).await?;
+
+    // problem_id → title のマップを作る（リクエストごとにディスクから読む）
+    let problems = problem::load_all(&state.problems_dir);
+    let title_map: std::collections::HashMap<&str, &str> = problems
+        .iter()
+        .map(|p| (p.id.as_str(), p.title.as_str()))
+        .collect();
+
     let rows: Vec<SubmissionListItem> = subs
         .iter()
         .map(|s| {
             let (verdict, badge_class, _) = verdict_info(&s.status);
+            let problem_title = title_map
+                .get(s.problem_id.as_str())
+                .copied()
+                .unwrap_or(&s.problem_id)
+                .to_string();
             SubmissionListItem {
                 id: s.id.to_string(),
                 problem_id: s.problem_id.clone(),
+                problem_title,
                 language: s.language.to_db().to_string(),
                 verdict,
                 badge_class,

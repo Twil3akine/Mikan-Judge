@@ -8,7 +8,6 @@
   <table>
     <thead>
       <tr>
-        <th>ID</th>
         <th>問題</th>
         <th>言語</th>
         <th>結果</th>
@@ -18,10 +17,9 @@
     <tbody>
       {% for s in submissions %}
       <tr>
-        <td><a href="/submissions/{{ s.id }}">{{ s.id | truncate(length=8, end="") }}</a></td>
-        <td><a href="/problems/{{ s.problem_id }}">{{ s.problem_id }}</a></td>
+        <td><a href="/problems/{{ s.problem_id }}">{{ s.problem_title }}</a></td>
         <td>{{ s.language }}</td>
-        <td><span class="badge badge-{{ s.badge_class }}">{{ s.verdict }}</span></td>
+        <td><a href="/submissions/{{ s.id }}"><span class="badge badge-{{ s.badge_class }}">{{ s.verdict }}</span></a></td>
         <td>{% if s.time_used_ms %}{{ s.time_used_ms }} ms{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
