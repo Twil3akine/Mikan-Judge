@@ -1,8 +1,7 @@
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 mod api;
+mod db;
 mod sandbox;
 mod types;
 mod worker;
@@ -16,16 +15,23 @@ async fn main() {
         )
         .init();
 
-    let store: worker::SubmissionStore = Arc::new(RwLock::new(HashMap::new()));
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set (run inside nix dev shell)");
+
+    let pool = Arc::new(
+        db::create_pool(&database_url)
+            .await
+            .expect("Failed to connect to database"),
+    );
 
     let num_workers = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(2);
     tracing::info!("Starting {num_workers} judge worker(s)");
 
-    let job_tx = worker::spawn_workers(num_workers, store.clone());
+    let job_tx = worker::spawn_workers(num_workers, pool.clone());
 
-    let state = api::AppState { store, job_tx };
+    let state = api::AppState { pool, job_tx };
     let app = api::create_router(state);
 
     let addr = "0.0.0.0:3000";

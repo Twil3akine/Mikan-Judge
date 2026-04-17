@@ -1,15 +1,13 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{mpsc, Mutex, RwLock};
+use sqlx::PgPool;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use crate::db::submission as db_sub;
 use crate::sandbox::{self, RunStatus, SandboxConfig};
 use crate::types::{JudgeStatus, Language, Submission};
-
-/// 提出情報をインメモリで保持するストア（後で PostgreSQL に差し替える）
-pub type SubmissionStore = Arc<RwLock<HashMap<Uuid, Submission>>>;
 
 /// ジャッジキューに積むジョブ
 #[derive(Debug)]
@@ -24,15 +22,13 @@ pub struct JudgeJob {
 }
 
 /// `num_workers` 個の tokio タスクを起動してジョブを並列処理する。
-/// 返り値の `Sender` にジョブを送ると、空いているワーカーが処理する。
-pub fn spawn_workers(num_workers: usize, store: SubmissionStore) -> mpsc::Sender<JudgeJob> {
+pub fn spawn_workers(num_workers: usize, pool: Arc<PgPool>) -> mpsc::Sender<JudgeJob> {
     let (tx, rx) = mpsc::channel::<JudgeJob>(256);
-    // Arc<Mutex<Receiver>> で複数ワーカーが単一のチャネルを共有する
-    let rx = Arc::new(Mutex::new(rx));
+    let rx = Arc::new(tokio::sync::Mutex::new(rx));
 
     for worker_id in 0..num_workers {
         let rx = rx.clone();
-        let store = store.clone();
+        let pool = pool.clone();
         tokio::spawn(async move {
             tracing::info!(worker_id, "judge worker started");
             loop {
@@ -44,7 +40,7 @@ pub fn spawn_workers(num_workers: usize, store: SubmissionStore) -> mpsc::Sender
                     }
                     Some(job) => {
                         tracing::info!(worker_id, submission_id = %job.id, "processing job");
-                        judge(job, store.clone()).await;
+                        judge(job, &pool).await;
                     }
                 }
             }
@@ -56,25 +52,19 @@ pub fn spawn_workers(num_workers: usize, store: SubmissionStore) -> mpsc::Sender
 
 // ---- 内部実装 ----
 
-async fn set_status(store: &SubmissionStore, id: Uuid, status: JudgeStatus) {
-    if let Some(sub) = store.write().await.get_mut(&id) {
-        sub.status = status;
+async fn set_status(pool: &PgPool, id: Uuid, status: JudgeStatus) {
+    if let Err(e) = db_sub::update_status(pool, id, &status).await {
+        tracing::error!(%id, "failed to update status: {e}");
     }
 }
 
-async fn judge(job: JudgeJob, store: SubmissionStore) {
-    set_status(&store, job.id, JudgeStatus::Running).await;
+async fn judge(job: JudgeJob, pool: &PgPool) {
+    set_status(pool, job.id, JudgeStatus::Running).await;
 
-    // 一時ディレクトリ（ソースとバイナリを置く）
     let work_dir = match tempfile::tempdir() {
         Ok(d) => d,
         Err(e) => {
-            set_status(
-                &store,
-                job.id,
-                JudgeStatus::InternalError { message: e.to_string() },
-            )
-            .await;
+            set_status(pool, job.id, JudgeStatus::InternalError { message: e.to_string() }).await;
             return;
         }
     };
@@ -84,18 +74,18 @@ async fn judge(job: JudgeJob, store: SubmissionStore) {
         match sandbox::compile(&job.source_code, &job.language, work_dir.path()).await {
             Ok(r) => r,
             Err(e) => {
-                set_status(
-                    &store,
-                    job.id,
-                    JudgeStatus::InternalError { message: e.to_string() },
-                )
-                .await;
+                set_status(pool, job.id, JudgeStatus::InternalError { message: e.to_string() })
+                    .await;
                 return;
             }
         };
 
     if let Some(msg) = compile_err {
-        set_status(&store, job.id, JudgeStatus::CompileError { message: msg }).await;
+        let status = JudgeStatus::CompileError { message: msg };
+        if let Err(e) = db_sub::update_result(pool, job.id, &status, None, None, None, None).await
+        {
+            tracing::error!(%job.id, "failed to update compile error: {e}");
+        }
         return;
     }
 
@@ -103,18 +93,13 @@ async fn judge(job: JudgeJob, store: SubmissionStore) {
     let cfg = SandboxConfig {
         time_limit: Duration::from_millis(job.time_limit_ms),
         memory_limit_bytes: job.memory_limit_kb * 1024,
-        max_output_bytes: 16 * 1024 * 1024, // 16 MiB
+        max_output_bytes: 16 * 1024 * 1024,
     };
 
     let run = match sandbox::run_in_sandbox(&exe, job.stdin.as_bytes(), cfg).await {
         Ok(r) => r,
         Err(e) => {
-            set_status(
-                &store,
-                job.id,
-                JudgeStatus::InternalError { message: e.to_string() },
-            )
-            .await;
+            set_status(pool, job.id, JudgeStatus::InternalError { message: e.to_string() }).await;
             return;
         }
     };
@@ -123,11 +108,10 @@ async fn judge(job: JudgeJob, store: SubmissionStore) {
     let final_status = match run.status {
         RunStatus::TimeLimitExceeded => JudgeStatus::TimeLimitExceeded,
         RunStatus::MemoryLimitExceeded => JudgeStatus::MemoryLimitExceeded,
-        RunStatus::RuntimeError | RunStatus::Killed(_) => JudgeStatus::RuntimeError {
-            exit_code: run.exit_code.unwrap_or(-1),
-        },
+        RunStatus::RuntimeError | RunStatus::Killed(_) => {
+            JudgeStatus::RuntimeError { exit_code: run.exit_code.unwrap_or(-1) }
+        }
         RunStatus::Ok => {
-            // 末尾の空白・改行を無視して比較
             if String::from_utf8_lossy(&run.stdout).trim() == job.expected_output.trim() {
                 JudgeStatus::Accepted
             } else {
@@ -136,13 +120,25 @@ async fn judge(job: JudgeJob, store: SubmissionStore) {
         }
     };
 
-    // --- 結果をストアに書き戻す ---
-    let mut map = store.write().await;
-    if let Some(sub) = map.get_mut(&job.id) {
-        sub.status = final_status;
-        sub.time_used_ms = Some(run.time_used.as_millis() as u64);
-        sub.memory_used_kb = Some(run.memory_used_bytes / 1024);
-        sub.stdout = Some(String::from_utf8_lossy(&run.stdout).into_owned());
-        sub.stderr = Some(String::from_utf8_lossy(&run.stderr).into_owned());
+    let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&run.stderr).into_owned();
+
+    if let Err(e) = db_sub::update_result(
+        pool,
+        job.id,
+        &final_status,
+        Some(run.time_used.as_millis() as u64),
+        Some(run.memory_used_bytes / 1024),
+        Some(&stdout),
+        Some(&stderr),
+    )
+    .await
+    {
+        tracing::error!(%job.id, "failed to write result: {e}");
     }
+}
+
+/// API ハンドラが提出を登録するときに使う
+pub async fn create_submission(pool: &PgPool, sub: &Submission) -> anyhow::Result<()> {
+    db_sub::insert(pool, sub).await
 }

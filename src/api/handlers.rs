@@ -6,8 +6,9 @@ use axum::{
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use crate::db::submission as db_sub;
 use crate::types::{JudgeStatus, Submission, SubmitRequest};
-use crate::worker::JudgeJob;
+use crate::worker::{create_submission, JudgeJob};
 
 use super::AppState;
 
@@ -16,33 +17,31 @@ pub async fn health() -> Json<Value> {
 }
 
 /// POST /submit
-/// ソースコードを受け取り、ジョブキューに積んで submission id を返す。
 pub async fn submit(
     State(state): State<AppState>,
     Json(req): Json<SubmitRequest>,
 ) -> Result<Json<Value>, StatusCode> {
     let id = Uuid::new_v4();
 
-    // まず Pending 状態で登録
-    {
-        let mut map = state.store.write().await;
-        map.insert(
-            id,
-            Submission {
-                id,
-                source_code: req.source_code.clone(),
-                language: req.language.clone(),
-                problem_id: req.problem_id.clone(),
-                status: JudgeStatus::Pending,
-                time_used_ms: None,
-                memory_used_kb: None,
-                stdout: None,
-                stderr: None,
-            },
-        );
-    }
+    let sub = Submission {
+        id,
+        source_code: req.source_code.clone(),
+        language: req.language.clone(),
+        problem_id: req.problem_id.clone(),
+        status: JudgeStatus::Pending,
+        time_used_ms: None,
+        memory_used_kb: None,
+        stdout: None,
+        stderr: None,
+    };
 
-    // ジョブをキューに送る
+    create_submission(&state.pool, &sub)
+        .await
+        .map_err(|e| {
+            tracing::error!("failed to insert submission: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
     state
         .job_tx
         .send(JudgeJob {
@@ -60,12 +59,17 @@ pub async fn submit(
     Ok(Json(json!({ "id": id })))
 }
 
-/// GET /result/:id
-/// 提出結果を返す。id が存在しなければ 404。
+/// GET /result/{id}
 pub async fn get_result(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Submission>, StatusCode> {
-    let map = state.store.read().await;
-    map.get(&id).cloned().map(Json).ok_or(StatusCode::NOT_FOUND)
+    db_sub::get_by_id(&state.pool, id)
+        .await
+        .map_err(|e| {
+            tracing::error!("db error: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map(Json)
+        .ok_or(StatusCode::NOT_FOUND)
 }

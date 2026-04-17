@@ -1,17 +1,19 @@
+use std::sync::Arc;
+
 use axum::{
     routing::{get, post},
     Router,
 };
+use sqlx::PgPool;
 use tokio::sync::mpsc::Sender;
 
-use crate::worker::{JudgeJob, SubmissionStore};
+use crate::worker::JudgeJob;
 
 pub mod handlers;
 
-/// axum の共有ステート
 #[derive(Clone)]
 pub struct AppState {
-    pub store: SubmissionStore,
+    pub pool: Arc<PgPool>,
     pub job_tx: Sender<JudgeJob>,
 }
 
