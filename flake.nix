@@ -58,13 +58,12 @@
           );
 
           shellHook = ''
-            echo "🍊 mikan-judge dev shell"
-            echo "  Rust  : $(rustc --version)"
-            echo "  g++   : $(g++ --version | head -1)"
-            echo "  sqlx  : $(sqlx --version 2>/dev/null || echo 'not found')"
+            echo "mikan-judge dev shell"
+            echo "  Rust : $(rustc --version)"
+            echo "  g++  : $(g++ --version | head -1)"
             echo ""
-            echo "DB 起動: pg_start   DB 停止: pg_stop"
-            echo "Watch : cargo watch -x run"
+            echo "DB   : pg_start / pg_stop"
+            echo "Watch: cargo watch -x run"
 
             # ローカル PostgreSQL を $PWD/.pg に閉じ込める
             export PGDATA="$PWD/.pg/data"
@@ -77,19 +76,23 @@
             # 初回だけ initdb
             if [ ! -d "$PGDATA" ]; then
               echo "Initializing local PostgreSQL in .pg/ ..."
-              mkdir -p "$PGDATA"
-              initdb -D "$PGDATA" --no-locale --encoding=UTF8 -U "$USER" -A trust \
-                --listen-addresses='' 2>/dev/null
-              # unix socket のみ（ポート不使用でもよいが互換性のため残す）
+              mkdir -p "$PGHOST"
+              initdb -D "$PGDATA" --no-locale --encoding=UTF8 -U "$USER" -A trust 2>/dev/null
+              # TCP を無効化して unix socket のみにする
+              echo "listen_addresses = ''''" >> "$PGDATA/postgresql.conf"
               echo "unix_socket_directories = '$PGHOST'" >> "$PGDATA/postgresql.conf"
             fi
 
-            # 便利エイリアス
-            alias pg_start="pg_ctl -D $PGDATA -l $PGHOST/pg.log start && \
-              sleep 1 && \
-              (createdb $PGDATABASE 2>/dev/null || true) && \
-              echo 'PostgreSQL started: $DATABASE_URL'"
-            alias pg_stop="pg_ctl -D $PGDATA stop"
+            # 便利関数（エイリアスより行継続が不要で安全）
+            pg_start() {
+              pg_ctl -D "$PGDATA" -l "$PGHOST/pg.log" start
+              sleep 1
+              createdb "$PGDATABASE" 2>/dev/null || true
+              echo "PostgreSQL started: $DATABASE_URL"
+            }
+            pg_stop() {
+              pg_ctl -D "$PGDATA" stop
+            }
           '';
         };
       }
