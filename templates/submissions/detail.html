@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}提出結果 - MikanJudge{% endblock %}
+
+{% block content %}
+<h1>提出結果</h1>
+
+<div class="card">
+  <div style="display:flex;gap:1.5rem;align-items:center;flex-wrap:wrap">
+    <div id="verdict-area"
+      {% if is_pending %}
+      hx-get="/submissions/{{ id }}/poll"
+      hx-trigger="every 1s"
+      hx-swap="outerHTML"
+      {% endif %}>
+      {% include "submissions/_verdict.html" %}
+    </div>
+  </div>
+  <div class="meta-row">
+    <span>問題: <b><a href="/problems/{{ problem_id }}">{{ problem_id }}</a></b></span>
+    <span>言語: <b>{{ language }}</b></span>
+    {% if time_used_ms %}
+    <span>実行時間: <b>{{ time_used_ms }} ms</b></span>
+    {% endif %}
+    {% if memory_used_kb %}
+    <span>メモリ: <b>{{ memory_used_kb }} KB</b></span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">ソースコード</h2>
+  <div class="code-block">{{ source_code }}</div>
+</div>
+
+{% if stderr and stderr != "" %}
+<div class="card">
+  <h2 style="margin-top:0">エラー出力</h2>
+  <div class="code-block">{{ stderr }}</div>
+</div>
+{% endif %}
+
+{% if stdout and stdout != "" %}
+<div class="card">
+  <h2 style="margin-top:0">標準出力</h2>
+  <div class="code-block">{{ stdout }}</div>
+</div>
+{% endif %}
+{% endblock %}

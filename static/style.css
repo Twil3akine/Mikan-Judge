@@ -1,0 +1,144 @@
+:root {
+  --primary: #f97316;
+  --primary-dark: #ea6c0a;
+  --bg: #f8f9fa;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --radius: 8px;
+  --ac: #16a34a;
+  --wa: #dc2626;
+  --tle: #d97706;
+  --ce: #6b7280;
+  --re: #9333ea;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+}
+
+/* ---- Nav ---- */
+nav {
+  background: #fff;
+  border-bottom: 3px solid var(--primary);
+  padding: 0.75rem 2rem;
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+}
+nav .logo { color: var(--primary); font-size: 1.25rem; font-weight: 800; text-decoration: none; }
+nav a { text-decoration: none; color: var(--text); font-weight: 500; }
+nav a:hover { color: var(--primary); }
+
+/* ---- Layout ---- */
+main { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  margin-bottom: 1.5rem;
+}
+
+h1 { font-size: 1.6rem; margin-bottom: 1rem; }
+h2 { font-size: 1.2rem; margin: 1.5rem 0 0.75rem; color: var(--primary); }
+
+/* ---- Problem statement ---- */
+.statement h2 { color: var(--text); font-size: 1rem; font-weight: 700; border-left: 3px solid var(--primary); padding-left: .5rem; }
+.statement p { margin-bottom: .75rem; }
+.statement pre { background: #f3f4f6; border-radius: 4px; padding: .75rem 1rem; font-size: .875rem; overflow-x: auto; margin-bottom: .75rem; }
+.statement code { font-family: 'Menlo', 'Consolas', monospace; font-size: .875em; background: #f3f4f6; padding: .1em .3em; border-radius: 3px; }
+.statement pre code { background: none; padding: 0; }
+
+/* ---- Table ---- */
+table { width: 100%; border-collapse: collapse; }
+th { background: #f3f4f6; text-align: left; padding: .6rem 1rem; font-size: .875rem; color: var(--muted); font-weight: 600; }
+td { padding: .75rem 1rem; border-bottom: 1px solid var(--border); font-size: .9rem; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #fafafa; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---- Form ---- */
+.form-group { margin-bottom: 1rem; }
+label { display: block; font-size: .875rem; font-weight: 600; margin-bottom: .4rem; color: var(--muted); }
+select {
+  padding: .5rem .75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: .9rem;
+  background: #fff;
+}
+textarea {
+  width: 100%;
+  height: 320px;
+  padding: .75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: .875rem;
+  resize: vertical;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  line-height: 1.6;
+}
+textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
+
+.btn {
+  display: inline-block;
+  padding: .6rem 1.5rem;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn:hover { background: var(--primary-dark); }
+.btn:disabled { background: var(--muted); cursor: not-allowed; }
+
+/* ---- Verdict badge ---- */
+.badge {
+  display: inline-block;
+  padding: .25rem .75rem;
+  border-radius: 999px;
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+.badge-ac  { background: #dcfce7; color: var(--ac); }
+.badge-wa  { background: #fee2e2; color: var(--wa); }
+.badge-tle { background: #fef3c7; color: var(--tle); }
+.badge-mle { background: #fef3c7; color: var(--tle); }
+.badge-re  { background: #f3e8ff; color: var(--re); }
+.badge-ce  { background: #f3f4f6; color: var(--ce); }
+.badge-pending { background: #e0f2fe; color: #0369a1; }
+.badge-running { background: #e0f2fe; color: #0369a1; animation: pulse 1s infinite; }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+/* ---- Result detail ---- */
+.meta-row { display: flex; gap: 2rem; margin: 1rem 0; font-size: .9rem; color: var(--muted); }
+.meta-row span b { color: var(--text); }
+
+.code-block {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border-radius: var(--radius);
+  padding: 1rem;
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: .8rem;
+  overflow-x: auto;
+  white-space: pre;
+  max-height: 400px;
+  overflow-y: auto;
+}
