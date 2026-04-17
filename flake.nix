@@ -24,11 +24,6 @@
           pkgs.libseccomp.dev
         ];
 
-        # macOS のみ必要なパッケージ
-        darwinPkgs = pkgs.lib.optionals pkgs.stdenv.isDarwin [
-          pkgs.darwin.apple_sdk.frameworks.Security
-          pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-        ];
       in
       {
         devShells.default = pkgs.mkShell {
@@ -49,7 +44,7 @@
             # 開発ツール
             pkgs.cargo-watch  # ファイル変更で自動リビルド
             pkgs.sqlx-cli     # DB マイグレーション管理
-          ] ++ linuxPkgs ++ darwinPkgs;
+          ] ++ linuxPkgs;
 
           # PKG_CONFIG_PATH を通す（openssl, libseccomp のヘッダ検索）
           PKG_CONFIG_PATH = pkgs.lib.makeSearchPath "lib/pkgconfig" (
