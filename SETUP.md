@@ -58,22 +58,19 @@ cd ~/mein/coding-space/mikan-judge
 ### サーバを起動する
 
 ```fish
-# DB を起動（初回は自動で初期化される）
-pg_start
-
-# サーバを起動（ファイルを変えると自動で再起動）
-cargo watch -x run
-
-# または普通に起動
-cargo run
+dev
 ```
 
-### サーバを止める
+これだけです。DB の起動・サーバの起動（ファイル変更で自動再起動）を一括でやります。
+Ctrl+C で止めると PostgreSQL も自動で止まります。
+
+個別に操作したい場合：
 
 ```fish
-# Ctrl+C でサーバを止める
-# DB も止める場合
-pg_stop
+pg_start          # DB だけ起動
+cargo watch -x run  # サーバだけ起動（ファイル変更で自動再起動）
+cargo run           # サーバを1回だけ起動
+pg_stop           # DB だけ停止
 ```
 
 ### 動作確認（curl）
