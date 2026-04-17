@@ -24,8 +24,39 @@
     {% if memory_used_kb %}
     <span>メモリ: <b>{{ memory_used_kb }} KB</b></span>
     {% endif %}
+    {% if is_accepted and problem_score %}
+    <span>得点: <b style="color:var(--ac)">{{ problem_score }} 点</b></span>
+    {% endif %}
   </div>
 </div>
+
+{% if testcase_results %}
+<div class="card">
+  <h2 style="margin-top:0">テストケース別結果</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>結果</th></tr>
+    </thead>
+    <tbody>
+      {% for v in testcase_results %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>
+          {% if v == "AC" %}<span class="badge badge-ac">AC</span>
+          {% elif v == "WA" %}<span class="badge badge-wa">WA</span>
+          {% elif v == "TLE" %}<span class="badge badge-tle">TLE</span>
+          {% elif v == "MLE" %}<span class="badge badge-mle">MLE</span>
+          {% elif v == "RE" %}<span class="badge badge-re">RE</span>
+          {% elif v == "--" %}<span class="badge badge-pending">--</span>
+          {% else %}<span class="badge badge-ce">{{ v }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 <div class="card">
   <h2 style="margin-top:0">ソースコード</h2>

@@ -15,8 +15,8 @@ pub struct JudgeJob {
     pub id: Uuid,
     pub source_code: String,
     pub language: Language,
-    pub stdin: String,
-    pub expected_output: String,
+    /// (stdin, expected_output) のペアのリスト
+    pub testcases: Vec<(String, String)>,
     pub time_limit_ms: u64,
     pub memory_limit_kb: u64,
 }
@@ -82,14 +82,15 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
 
     if let Some(ref msg) = compiled.error {
         let status = JudgeStatus::CompileError { message: msg.clone() };
-        if let Err(e) = db_sub::update_result(pool, job.id, &status, None, None, None, Some(msg)).await
+        if let Err(e) =
+            db_sub::update_result(pool, job.id, &status, None, None, None, Some(msg), None).await
         {
             tracing::error!(%job.id, "failed to update compile error: {e}");
         }
         return;
     }
 
-    // --- サンドボックス実行 ---
+    // --- 全テストケースを実行 ---
     let mem = job.memory_limit_kb * 1024;
     let cfg = SandboxConfig {
         time_limit: Duration::from_millis(job.time_limit_ms),
@@ -98,49 +99,83 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
         vm_limit_bytes: if job.language.is_interpreted() { None } else { Some(mem * 2) },
     };
 
-    let run = match sandbox::run_in_sandbox(&compiled.executable, compiled.run_args, job.stdin.as_bytes(), cfg).await {
-        Ok(r) => r,
-        Err(e) => {
-            set_status(pool, job.id, JudgeStatus::InternalError { message: e.to_string() }).await;
-            return;
-        }
-    };
+    let mut final_status = JudgeStatus::Accepted;
+    let mut last_time_ms: Option<u64> = None;
+    let mut last_memory_kb: Option<u64> = None;
+    let mut last_stdout = String::new();
+    let mut last_stderr = String::new();
+    let mut tc_verdicts: Vec<String> = Vec::new();
 
-    // --- 判定 ---
-    let final_status = match run.status {
-        RunStatus::TimeLimitExceeded => JudgeStatus::TimeLimitExceeded,
-        RunStatus::MemoryLimitExceeded => JudgeStatus::MemoryLimitExceeded,
-        RunStatus::RuntimeError | RunStatus::Killed(_) => {
-            JudgeStatus::RuntimeError { exit_code: run.exit_code.unwrap_or(-1) }
-        }
-        RunStatus::Ok => {
-            if String::from_utf8_lossy(&run.stdout).trim() == job.expected_output.trim() {
-                JudgeStatus::Accepted
-            } else {
-                JudgeStatus::WrongAnswer
+    for (stdin, expected_output) in &job.testcases {
+        let run = match sandbox::run_in_sandbox(
+            &compiled.executable,
+            compiled.run_args.clone(),
+            stdin.as_bytes(),
+            cfg.clone(),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                set_status(pool, job.id, JudgeStatus::InternalError { message: e.to_string() })
+                    .await;
+                return;
             }
-        }
-    };
+        };
 
-    let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
-    let runtime_stderr = String::from_utf8_lossy(&run.stderr).into_owned();
-    // コンパイル警告があれば先頭に表示
-    let stderr = if compiled.warnings.is_empty() {
-        runtime_stderr
-    } else if runtime_stderr.is_empty() {
-        format!("[Compile warnings]\n{}", compiled.warnings)
-    } else {
-        format!("[Compile warnings]\n{}\n[Runtime stderr]\n{runtime_stderr}", compiled.warnings)
-    };
+        last_time_ms = Some(run.cpu_time_used.as_millis() as u64);
+        last_memory_kb = Some(run.memory_used_bytes / 1024);
+        last_stdout = String::from_utf8_lossy(&run.stdout).into_owned();
+        let runtime_stderr = String::from_utf8_lossy(&run.stderr).into_owned();
+        last_stderr = if compiled.warnings.is_empty() {
+            runtime_stderr
+        } else if runtime_stderr.is_empty() {
+            format!("[Compile warnings]\n{}", compiled.warnings)
+        } else {
+            format!("[Compile warnings]\n{}\n[Runtime stderr]\n{runtime_stderr}", compiled.warnings)
+        };
+
+        let case_status = match run.status {
+            RunStatus::TimeLimitExceeded => JudgeStatus::TimeLimitExceeded,
+            RunStatus::MemoryLimitExceeded => JudgeStatus::MemoryLimitExceeded,
+            RunStatus::RuntimeError | RunStatus::Killed(_) => {
+                JudgeStatus::RuntimeError { exit_code: run.exit_code.unwrap_or(-1) }
+            }
+            RunStatus::Ok => {
+                if String::from_utf8_lossy(&run.stdout).trim() == expected_output.trim() {
+                    JudgeStatus::Accepted
+                } else {
+                    JudgeStatus::WrongAnswer
+                }
+            }
+        };
+
+        tc_verdicts.push(match &case_status {
+            JudgeStatus::Accepted => "AC",
+            JudgeStatus::WrongAnswer => "WA",
+            JudgeStatus::TimeLimitExceeded => "TLE",
+            JudgeStatus::MemoryLimitExceeded => "MLE",
+            JudgeStatus::RuntimeError { .. } => "RE",
+            _ => "IE",
+        }.to_string());
+        if !matches!(case_status, JudgeStatus::Accepted) {
+            // 残りのケースは未実施 (skipped) として記録
+            let remaining = job.testcases.len() - tc_verdicts.len();
+            tc_verdicts.extend(std::iter::repeat_n("--".to_string(), remaining));
+            final_status = case_status;
+            break;
+        }
+    }
 
     if let Err(e) = db_sub::update_result(
         pool,
         job.id,
         &final_status,
-        Some(run.cpu_time_used.as_millis() as u64),
-        Some(run.memory_used_bytes / 1024),
-        Some(&stdout),
-        Some(&stderr),
+        last_time_ms,
+        last_memory_kb,
+        Some(&last_stdout),
+        Some(&last_stderr),
+        Some(&tc_verdicts),
     )
     .await
     {

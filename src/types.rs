@@ -142,6 +142,8 @@ pub struct Submission {
     pub memory_used_kb: Option<u64>,
     pub stdout: Option<String>,
     pub stderr: Option<String>,
+    /// 各テストケースの短い verdict 文字列 (例: ["AC", "WA", "TLE"])
+    pub testcase_results: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

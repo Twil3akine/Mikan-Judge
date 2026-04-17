@@ -17,6 +17,7 @@ struct SubmissionRow {
     memory_used_kb: Option<i64>,
     stdout: Option<String>,
     stderr: Option<String>,
+    testcase_results: Option<String>,
     #[allow(dead_code)]
     created_at: DateTime<Utc>,
 }
@@ -24,6 +25,9 @@ struct SubmissionRow {
 impl SubmissionRow {
     fn into_submission(self) -> Submission {
         let status = JudgeStatus::from_db(&self.status);
+        let testcase_results = self
+            .testcase_results
+            .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok());
         Submission {
             id: self.id,
             problem_id: self.problem_id,
@@ -34,6 +38,7 @@ impl SubmissionRow {
             memory_used_kb: self.memory_used_kb.map(|v| v as u64),
             stdout: self.stdout,
             stderr: self.stderr,
+            testcase_results,
         }
     }
 }
@@ -56,7 +61,7 @@ pub async fn insert(pool: &PgPool, sub: &Submission) -> Result<()> {
 pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Submission>> {
     let row = sqlx::query_as::<_, SubmissionRow>(
         "SELECT id, problem_id, language, source_code, status,
-                time_used_ms, memory_used_kb, stdout, stderr, created_at
+                time_used_ms, memory_used_kb, stdout, stderr, testcase_results, created_at
          FROM submissions WHERE id = $1",
     )
     .bind(id)
@@ -73,18 +78,21 @@ pub async fn update_result(
     memory_used_kb: Option<u64>,
     stdout: Option<&str>,
     stderr: Option<&str>,
+    testcase_results: Option<&[String]>,
 ) -> Result<()> {
+    let tc_json = testcase_results.map(|v| serde_json::to_string(v).unwrap_or_default());
     sqlx::query(
         "UPDATE submissions
          SET status = $1, time_used_ms = $2, memory_used_kb = $3,
-             stdout = $4, stderr = $5
-         WHERE id = $6",
+             stdout = $4, stderr = $5, testcase_results = $6
+         WHERE id = $7",
     )
     .bind(status.to_db())
     .bind(time_used_ms.map(|v| v as i64))
     .bind(memory_used_kb.map(|v| v as i64))
     .bind(stdout)
     .bind(stderr)
+    .bind(tc_json)
     .bind(id)
     .execute(pool)
     .await?;
@@ -94,7 +102,7 @@ pub async fn update_result(
 pub async fn list_recent(pool: &PgPool, limit: i64) -> Result<Vec<Submission>> {
     let rows = sqlx::query_as::<_, SubmissionRow>(
         "SELECT id, problem_id, language, source_code, status,
-                time_used_ms, memory_used_kb, stdout, stderr, created_at
+                time_used_ms, memory_used_kb, stdout, stderr, testcase_results, created_at
          FROM submissions ORDER BY created_at DESC LIMIT $1",
     )
     .bind(limit)
