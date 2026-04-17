@@ -32,6 +32,7 @@ pub struct RunResult {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum RunStatus {
     Ok,
     TimeLimitExceeded,
