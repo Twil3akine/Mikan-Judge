@@ -60,6 +60,7 @@
             pkgs.cargo-watch
             pkgs.sqlx-cli
             pkgs.python3
+            pkgs.pypy3
             pgStart
             pgStop
             dbMigrate
@@ -75,6 +76,8 @@
             echo "mikan-judge dev shell"
             echo "  Rust : $(rustc --version)"
             echo "  g++  : $(g++ --version | head -1)"
+            echo "  CPy  : $(python3 --version)"
+            echo "  PyPy : $(pypy3 --version 2>&1 | tail -1)"
             echo ""
             echo "Start: dev"
 
