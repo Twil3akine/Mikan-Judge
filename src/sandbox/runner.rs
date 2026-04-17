@@ -279,15 +279,19 @@ fn set_rlimit(resource: libc::c_int, soft: u64, hard: u64) {
     unsafe { libc::setrlimit(resource, &limit) };
 }
 
-/// RUSAGE_CHILDREN の max_rss をバイト単位で返す（Linux: KB 単位なので ×1024）
+/// RUSAGE_CHILDREN の max_rss をバイト単位で返す
+/// Linux: KB 単位 → ×1024
+/// macOS: バイト単位 → そのまま
 fn get_children_max_rss_bytes() -> u64 {
     let mut usage = unsafe { std::mem::zeroed::<libc::rusage>() };
     let ret = unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut usage) };
-    if ret == 0 {
-        (usage.ru_maxrss as u64).saturating_mul(1024)
-    } else {
-        0
+    if ret != 0 {
+        return 0;
     }
+    #[cfg(target_os = "linux")]
+    return (usage.ru_maxrss as u64).saturating_mul(1024);
+    #[cfg(not(target_os = "linux"))]
+    return usage.ru_maxrss as u64;
 }
 
 /// fd からデータを読み切って Vec<u8> で返す。max_bytes を超えた分は捨てる。
