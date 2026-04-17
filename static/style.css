@@ -76,7 +76,7 @@ input[type="password"],
 input[type="email"] {
   display: block;
   width: 100%;
-  padding: .8rem 1rem;
+  padding: 1rem 1.1rem;
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
   font-size: 1rem;
@@ -120,7 +120,7 @@ textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
 
 .btn {
   display: inline-block;
-  padding: .6rem 1.5rem;
+  padding: .9rem 1.5rem;
   background: var(--primary);
   color: #fff;
   border: none;
