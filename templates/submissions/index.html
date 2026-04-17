@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}提出一覧 | MikanJudge{% endblock %}
+
+{% block content %}
+<h1>提出一覧</h1>
+<div class="card">
+  {% if submissions %}
+  <table>
+    <thead>
+      <tr>
+        <th>問題</th>
+        <th>言語</th>
+        <th>結果</th>
+        <th>実行時間</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in submissions %}
+      <tr style="cursor:pointer" onclick="location.href='/submissions/{{ s.id }}'">
+        <td><a href="/problems/{{ s.problem_id }}" onclick="event.stopPropagation()">{{ s.problem_title }}</a></td>
+        <td>{{ s.language }}</td>
+        <td><span class="badge badge-{{ s.badge_class }}">{{ s.verdict }}</span></td>
+        <td>{% if s.time_used_ms %}{{ s.time_used_ms }} ms{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--muted);text-align:center;padding:2rem 0">まだ提出がありません</p>
+  {% endif %}
+</div>
+{% endblock %}

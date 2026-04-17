@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}問題一覧 - MikanJudge{% endblock %}
+
+{% block content %}
+<h1>問題一覧</h1>
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>タイトル</th>
+        <th>時間制限</th>
+        <th>メモリ制限</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in problems %}
+      <tr>
+        <td><a href="/problems/{{ p.id }}">{{ p.title }}</a></td>
+        <td>{{ p.time_limit_ms }} ms</td>
+        <td>{{ p.memory_limit_kb | filesizeformat }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" style="color:var(--muted);text-align:center">問題がありません</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

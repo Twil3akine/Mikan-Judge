@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 mod api;
 mod db;
+mod problem;
 mod sandbox;
 mod types;
 mod worker;
@@ -31,7 +32,12 @@ async fn main() {
 
     let job_tx = worker::spawn_workers(num_workers, pool.clone());
 
-    let state = api::AppState { pool, job_tx };
+    let tera = Arc::new(
+        tera::Tera::new("templates/**/*.html").expect("Failed to load templates"),
+    );
+    let problems_dir = Arc::new(std::path::PathBuf::from("problems"));
+
+    let state = api::AppState { pool, job_tx, tera, problems_dir };
     let app = api::create_router(state);
 
     let addr = "0.0.0.0:3000";

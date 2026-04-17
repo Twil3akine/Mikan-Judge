@@ -91,6 +91,18 @@ pub async fn update_result(
     Ok(())
 }
 
+pub async fn list_recent(pool: &PgPool, limit: i64) -> Result<Vec<Submission>> {
+    let rows = sqlx::query_as::<_, SubmissionRow>(
+        "SELECT id, problem_id, language, source_code, status,
+                time_used_ms, memory_used_kb, stdout, stderr, created_at
+         FROM submissions ORDER BY created_at DESC LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|r| r.into_submission()).collect())
+}
+
 pub async fn update_status(pool: &PgPool, id: Uuid, status: &JudgeStatus) -> Result<()> {
     sqlx::query("UPDATE submissions SET status = $1 WHERE id = $2")
         .bind(status.to_db())

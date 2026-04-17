@@ -13,13 +13,14 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use nix::sys::signal::Signal;
-use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+use nix::sys::wait::WaitStatus;
 use nix::unistd::{fork, ForkResult, Pid};
 
 use super::{RunResult, RunStatus, SandboxConfig};
 
 pub fn run_sandboxed_blocking(
     executable: &Path,
+    run_args: &[String],
     stdin_data: &[u8],
     config: &SandboxConfig,
 ) -> Result<RunResult> {
@@ -36,7 +37,7 @@ pub fn run_sandboxed_blocking(
         ForkResult::Child => {
             child_exec(
                 stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w,
-                executable, config,
+                executable, run_args, config,
             )
         }
         ForkResult::Parent { child } => parent_collect(
@@ -56,7 +57,7 @@ fn make_pipe() -> Result<(RawFd, RawFd)> {
 
 // ---- 子プロセス側 ----
 
-/// 子プロセスでサンドボックスを設定してから `execve` する。
+/// 子プロセスでサンドボックスを設定してから `execvp` する。
 /// この関数は絶対に返らない（`-> !`）。
 fn child_exec(
     stdin_r: RawFd,
@@ -66,6 +67,7 @@ fn child_exec(
     stderr_r: RawFd,
     stderr_w: RawFd,
     executable: &Path,
+    run_args: &[String],
     config: &SandboxConfig,
 ) -> ! {
     // stdin/stdout/stderr を再配線
@@ -89,9 +91,10 @@ fn child_exec(
     let cpu_secs = config.time_limit.as_secs().max(1) + 1;
     set_rlimit(libc::RLIMIT_CPU as _, cpu_secs, cpu_secs + 1);
 
-    // 仮想メモリ上限（MLE 検出用に 2x を上限にする）
-    let mem = config.memory_limit_bytes.saturating_mul(2);
-    set_rlimit(libc::RLIMIT_AS as _, mem, mem);
+    // 仮想メモリ上限: None のときは制限なし（Python 等インタプリタは起動時に大量の仮想空間を使うため）
+    if let Some(mem) = config.vm_limit_bytes {
+        set_rlimit(libc::RLIMIT_AS as _, mem, mem);
+    }
 
     // スタックサイズ: 64 MiB
     let stack: u64 = 64 * 1024 * 1024;
@@ -129,18 +132,25 @@ fn child_exec(
         }
     }
 
-    // ---- execve ----
+    // ---- execvp ----
+    // PATH を使って解決するので、インタプリタ名（"python3" 等）もそのまま渡せる。
 
     let path = match CString::new(executable.as_os_str().as_bytes()) {
         Ok(p) => p,
         Err(_) => unsafe { libc::_exit(1) },
     };
-    let args: &[CString] = &[path.clone()];
-    let env: &[CString] = &[];
 
-    let _ = nix::unistd::execve(&path, args, env);
+    let mut argv: Vec<CString> = vec![path.clone()];
+    for a in run_args {
+        match CString::new(a.as_bytes()) {
+            Ok(s) => argv.push(s),
+            Err(_) => unsafe { libc::_exit(1) },
+        }
+    }
 
-    // execve が返った = 失敗
+    let _ = nix::unistd::execvp(&path, &argv);
+
+    // execvp が返った = 失敗
     unsafe { libc::_exit(1) }
 }
 
@@ -192,36 +202,57 @@ fn parent_collect(
     let stdout_handle = std::thread::spawn(move || drain_fd(stdout_r, max_out));
     let stderr_handle = std::thread::spawn(move || drain_fd(stderr_r, 65_536));
 
-    // 子プロセスの終了をポーリング（ウォールクロックのタイムリミット付き）
+    // wait4 でポーリング。
+    // waitpid + getrusage(RUSAGE_CHILDREN) と違い、wait4 は「この特定の子プロセス」の
+    // リソース使用量を直接返すため、他ワーカーとの混入や累積問題が起きない。
     let deadline = start + config.time_limit + Duration::from_millis(100);
     let mut final_status: Option<WaitStatus> = None;
+    let mut child_rusage: libc::rusage = unsafe { std::mem::zeroed() };
     let mut killed = false;
 
     loop {
-        match waitpid(child, Some(WaitPidFlag::WNOHANG)) {
-            Ok(WaitStatus::StillAlive) => {
-                if Instant::now() >= deadline {
-                    let _ = nix::sys::signal::kill(child, Signal::SIGKILL);
-                    killed = true;
-                    // 子を確実に回収
-                    final_status = waitpid(child, None).ok();
-                    break;
+        let mut wstatus: libc::c_int = 0;
+        let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+        let ret = unsafe {
+            libc::wait4(child.as_raw(), &mut wstatus, libc::WNOHANG, &mut ru)
+        };
+
+        if ret == child.as_raw() {
+            child_rusage = ru;
+            final_status = Some(parse_wait_status(child, wstatus));
+            break;
+        } else if ret == 0 {
+            if Instant::now() >= deadline {
+                let _ = nix::sys::signal::kill(child, Signal::SIGKILL);
+                killed = true;
+                // ブロッキングで回収
+                let ret2 = unsafe {
+                    libc::wait4(child.as_raw(), &mut wstatus, 0, &mut child_rusage)
+                };
+                if ret2 == child.as_raw() {
+                    final_status = Some(parse_wait_status(child, wstatus));
                 }
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            Ok(ws) => {
-                final_status = Some(ws);
                 break;
             }
-            Err(_) => break,
+            std::thread::sleep(Duration::from_millis(5));
+        } else {
+            break; // エラー
         }
     }
 
     let time_used = start.elapsed();
 
-    // waitpid 後に getrusage で子プロセスのリソース使用量を取得
-    // max_rss は Linux では KB 単位
-    let memory_used_bytes = get_children_max_rss_bytes();
+    // wait4 から直接取得した値を使う
+    let user_us = child_rusage.ru_utime.tv_sec as u64 * 1_000_000
+        + child_rusage.ru_utime.tv_usec as u64;
+    let sys_us = child_rusage.ru_stime.tv_sec as u64 * 1_000_000
+        + child_rusage.ru_stime.tv_usec as u64;
+    let cpu_time_used = Duration::from_micros(user_us + sys_us);
+
+    #[cfg(target_os = "linux")]
+    let memory_used_bytes = (child_rusage.ru_maxrss as u64).saturating_mul(1024);
+    #[cfg(not(target_os = "linux"))]
+    let memory_used_bytes = child_rusage.ru_maxrss as u64;
 
     // ここで join することでパイプが完全に読み切られるのを待つ
     let stdout = stdout_handle.join().unwrap_or_default();
@@ -234,6 +265,7 @@ fn parent_collect(
         stderr,
         exit_code,
         time_used,
+        cpu_time_used,
         memory_used_bytes,
         status,
     })
@@ -278,19 +310,16 @@ fn set_rlimit(resource: libc::c_int, soft: u64, hard: u64) {
     unsafe { libc::setrlimit(resource, &limit) };
 }
 
-/// RUSAGE_CHILDREN の max_rss をバイト単位で返す
-/// Linux: KB 単位 → ×1024
-/// macOS: バイト単位 → そのまま
-fn get_children_max_rss_bytes() -> u64 {
-    let mut usage = unsafe { std::mem::zeroed::<libc::rusage>() };
-    let ret = unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut usage) };
-    if ret != 0 {
-        return 0;
+/// wait4 から得た生ステータスを WaitStatus に変換する。
+fn parse_wait_status(pid: Pid, raw: libc::c_int) -> WaitStatus {
+    if libc::WIFEXITED(raw) {
+        WaitStatus::Exited(pid, libc::WEXITSTATUS(raw))
+    } else if libc::WIFSIGNALED(raw) {
+        let sig = Signal::try_from(libc::WTERMSIG(raw)).unwrap_or(Signal::SIGKILL);
+        WaitStatus::Signaled(pid, sig, false)
+    } else {
+        WaitStatus::StillAlive
     }
-    #[cfg(target_os = "linux")]
-    return (usage.ru_maxrss as u64).saturating_mul(1024);
-    #[cfg(not(target_os = "linux"))]
-    return usage.ru_maxrss as u64;
 }
 
 /// fd からデータを読み切って Vec<u8> で返す。max_bytes を超えた分は捨てる。

@@ -6,6 +6,8 @@ use uuid::Uuid;
 pub enum Language {
     Cpp,
     Rust,
+    Python,
+    PyPy,
 }
 
 impl Language {
@@ -13,12 +15,16 @@ impl Language {
         match self {
             Language::Cpp => "cpp",
             Language::Rust => "rust",
+            Language::Python => "python",
+            Language::PyPy => "pypy",
         }
     }
 
     pub fn from_db(s: &str) -> Self {
         match s {
             "rust" => Language::Rust,
+            "python" => Language::Python,
+            "pypy" => Language::PyPy,
             _ => Language::Cpp,
         }
     }
@@ -27,6 +33,28 @@ impl Language {
         match self {
             Language::Cpp => "cpp",
             Language::Rust => "rs",
+            Language::Python | Language::PyPy => "py",
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Language::Cpp => "C++17",
+            Language::Rust => "Rust",
+            Language::Python => "Python3 (CPython)",
+            Language::PyPy => "Python3 (PyPy)",
+        }
+    }
+
+    pub fn is_interpreted(&self) -> bool {
+        matches!(self, Language::Python | Language::PyPy)
+    }
+
+    pub fn interpreter(&self) -> &'static str {
+        match self {
+            Language::Python => "python3",
+            Language::PyPy => "pypy3",
+            _ => panic!("not an interpreted language"),
         }
     }
 
@@ -34,10 +62,10 @@ impl Language {
         match self {
             Language::Cpp => "g++",
             Language::Rust => "rustc",
+            _ => panic!("not a compiled language"),
         }
     }
 
-    /// Returns the command-line arguments to compile `source` into `output`.
     pub fn compile_args(&self, source: &str, output: &str) -> Vec<String> {
         match self {
             Language::Cpp => vec![
@@ -54,6 +82,7 @@ impl Language {
                 "-C".to_string(),
                 "opt-level=2".to_string(),
             ],
+            _ => panic!("not a compiled language"),
         }
     }
 }
