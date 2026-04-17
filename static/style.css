@@ -125,7 +125,7 @@ textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   font-family: 'Menlo', 'Consolas', monospace;
-  font-size: calc(.875rem + 2pt);
+  font-size: calc(.9rem);
 }
 .badge-ac  { background: #dcfce7; color: var(--ac); }
 .badge-wa  { background: #fee2e2; color: var(--wa); }
