@@ -1144,6 +1144,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "argon2",
+ "async-trait",
  "axum",
  "chrono",
  "libc",
@@ -1156,6 +1157,7 @@ dependencies = [
  "tempfile",
  "tera",
  "thiserror 1.0.69",
+ "time",
  "tokio",
  "toml",
  "tower-http",
