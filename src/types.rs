@@ -37,6 +37,15 @@ impl Language {
         }
     }
 
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Language::Cpp => "C++17",
+            Language::Rust => "Rust",
+            Language::Python => "Python (CPython)",
+            Language::PyPy => "Python (PyPy)",
+        }
+    }
+
     pub fn is_interpreted(&self) -> bool {
         matches!(self, Language::Python | Language::PyPy)
     }

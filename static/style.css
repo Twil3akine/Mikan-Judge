@@ -62,7 +62,7 @@ h2 { font-size: 1.2rem; margin: 1.5rem 0 0.75rem; color: var(--primary); }
 /* ---- Table ---- */
 table { width: 100%; border-collapse: collapse; }
 th { background: #f3f4f6; text-align: left; padding: .6rem 1rem; font-size: .875rem; color: var(--muted); font-weight: 600; }
-td { padding: .75rem 1rem; border-bottom: 1px solid var(--border); font-size: .9rem; }
+td { padding: .75rem 1rem; border-bottom: 1px solid var(--border); font-size: .9rem; vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: #fafafa; }
 a { color: var(--primary); text-decoration: none; }
@@ -116,7 +116,15 @@ textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
   font-size: .8rem;
   font-weight: 700;
   letter-spacing: .05em;
+  line-height: 1.2;
+  vertical-align: middle;
 }
+
+/* ---- Language badge ---- */
+.lang-cpp    { background: #dbeafe; color: #1d4ed8; }
+.lang-rust   { background: #fee2e2; color: #b91c1c; }
+.lang-python { background: #fef9c3; color: #854d0e; }
+.lang-pypy   { background: #ede9fe; color: #6d28d9; }
 .badge-ac  { background: #dcfce7; color: var(--ac); }
 .badge-wa  { background: #fee2e2; color: var(--wa); }
 .badge-tle { background: #fef3c7; color: var(--tle); }

@@ -164,7 +164,7 @@ pub async fn submissions_index(
                 id: s.id.to_string(),
                 problem_id: s.problem_id.clone(),
                 problem_title,
-                language: s.language.to_db().to_string(),
+                language: s.language.display_name().to_string(),
                 verdict,
                 badge_class,
                 time_used_ms: s.time_used_ms,
@@ -200,7 +200,7 @@ pub async fn submissions_detail(
     ctx.insert("id", &sub.id.to_string());
     ctx.insert("problem_id", &sub.problem_id);
     ctx.insert("problem_title", &problem_title);
-    ctx.insert("language", &sub.language.to_db());
+    ctx.insert("language", &sub.language.display_name());
     ctx.insert("lang_hljs", lang_hljs);
     ctx.insert("source_code", &sub.source_code);
     ctx.insert("verdict", verdict);
