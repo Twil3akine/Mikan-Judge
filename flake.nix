@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url     = "github:NixOS/nixpkgs/nixos-unstable";
     rust-overlay.url = "github:oxalica/rust-overlay";
-    flake-utils.url = "github:numtide/flake-utils";
+    flake-utils.url  = "github:numtide/flake-utils";
   };
 
   outputs = { self, nixpkgs, rust-overlay, flake-utils }:
@@ -13,40 +13,51 @@
         overlays = [ (import rust-overlay) ];
         pkgs     = import nixpkgs { inherit system overlays; };
 
-        # Rust: stable の最新。rust-analyzer と rust-src を同梱
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
         };
 
-        # Linux のみ必要なパッケージ（macOS では無視される）
         linuxPkgs = pkgs.lib.optionals pkgs.stdenv.isLinux [
-          pkgs.libseccomp          # サンドボックス用
+          pkgs.libseccomp
           pkgs.libseccomp.dev
         ];
+
+        # fish でも使える実行ファイルとして定義
+        # env vars (PGDATA 等) は direnv 経由でエクスポートされているので参照できる
+        pgStart = pkgs.writeShellScriptBin "pg_start" ''
+          pg_ctl -D "$PGDATA" -l "$PGHOST/pg.log" start
+          sleep 1
+          createdb "$PGDATABASE" 2>/dev/null || true
+          echo "PostgreSQL started: $DATABASE_URL"
+        '';
+
+        pgStop = pkgs.writeShellScriptBin "pg_stop" ''
+          pg_ctl -D "$PGDATA" stop
+        '';
+
+        dev = pkgs.writeShellScriptBin "dev" ''
+          pg_start
+          trap 'pg_stop' EXIT INT TERM
+          cargo watch -x run
+        '';
 
       in
       {
         devShells.default = pkgs.mkShell {
           buildInputs = [
             rustToolchain
-
-            # C++ コンパイラ（解答コードのコンパイルに使用）
             pkgs.gcc
-            pkgs.gdb          # デバッグ用
-
-            # DB
+            pkgs.gdb
             pkgs.postgresql_16
-
-            # ビルドサポート
             pkgs.pkg-config
             pkgs.openssl.dev
-
-            # 開発ツール
-            pkgs.cargo-watch  # ファイル変更で自動リビルド
-            pkgs.sqlx-cli     # DB マイグレーション管理
+            pkgs.cargo-watch
+            pkgs.sqlx-cli
+            pgStart
+            pgStop
+            dev
           ] ++ linuxPkgs;
 
-          # PKG_CONFIG_PATH を通す（openssl, libseccomp のヘッダ検索）
           PKG_CONFIG_PATH = pkgs.lib.makeSearchPath "lib/pkgconfig" (
             [ pkgs.openssl.dev ]
             ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.libseccomp.dev ]
@@ -59,7 +70,6 @@
             echo ""
             echo "Start: dev"
 
-            # ローカル PostgreSQL を $PWD/.pg に閉じ込める
             export PGDATA="$PWD/.pg/data"
             export PGHOST="$PWD/.pg"
             export PGPORT=5432
@@ -67,31 +77,13 @@
             export PGDATABASE="mikan_judge"
             export DATABASE_URL="postgresql://$PGUSER@localhost:$PGPORT/$PGDATABASE"
 
-            # 初回だけ initdb
             if [ ! -d "$PGDATA" ]; then
               echo "Initializing local PostgreSQL in .pg/ ..."
               mkdir -p "$PGHOST"
               initdb -D "$PGDATA" --no-locale --encoding=UTF8 -U "$USER" -A trust 2>/dev/null
-              # TCP を無効化して unix socket のみにする
               echo "listen_addresses = ''''" >> "$PGDATA/postgresql.conf"
               echo "unix_socket_directories = '$PGHOST'" >> "$PGDATA/postgresql.conf"
             fi
-
-            # 便利関数（エイリアスより行継続が不要で安全）
-            pg_start() {
-              pg_ctl -D "$PGDATA" -l "$PGHOST/pg.log" start
-              sleep 1
-              createdb "$PGDATABASE" 2>/dev/null || true
-              echo "PostgreSQL started: $DATABASE_URL"
-            }
-            pg_stop() {
-              pg_ctl -D "$PGDATA" stop
-            }
-            dev() {
-              pg_start
-              trap 'pg_stop' EXIT INT TERM
-              cargo watch -x run
-            }
           '';
         };
       }
