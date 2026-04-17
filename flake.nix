@@ -57,8 +57,7 @@
             echo "  Rust : $(rustc --version)"
             echo "  g++  : $(g++ --version | head -1)"
             echo ""
-            echo "DB   : pg_start / pg_stop"
-            echo "Watch: cargo watch -x run"
+            echo "Start: dev"
 
             # ローカル PostgreSQL を $PWD/.pg に閉じ込める
             export PGDATA="$PWD/.pg/data"
@@ -87,6 +86,11 @@
             }
             pg_stop() {
               pg_ctl -D "$PGDATA" stop
+            }
+            dev() {
+              pg_start
+              trap 'pg_stop' EXIT INT TERM
+              cargo watch -x run
             }
           '';
         };
