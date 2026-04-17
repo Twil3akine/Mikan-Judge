@@ -64,7 +64,7 @@ td { padding: .75rem 1rem; border-bottom: 1px solid var(--border); font-size: .9
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: #fafafa; }
 a { color: var(--primary); text-decoration: none; }
-a:hover { text-decoration: underline; }
+a:hover { text-decoration: none; }
 
 /* ---- Form ---- */
 .form-group { margin-bottom: 1rem; }

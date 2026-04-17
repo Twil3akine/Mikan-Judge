@@ -28,6 +28,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/problems", get(handlers::problems_index))
         .route("/problems/{id}", get(handlers::problems_detail))
         .route("/problems/{id}/submit", post(handlers::problems_submit))
+        .route("/submissions", get(handlers::submissions_index))
         .route("/submissions/{id}", get(handlers::submissions_detail))
         .route("/submissions/{id}/poll", get(handlers::submissions_poll))
         // ---- JSON API ----

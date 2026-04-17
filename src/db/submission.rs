@@ -91,7 +91,6 @@ pub async fn update_result(
     Ok(())
 }
 
-#[allow(dead_code)]
 pub async fn list_recent(pool: &PgPool, limit: i64) -> Result<Vec<Submission>> {
     let rows = sqlx::query_as::<_, SubmissionRow>(
         "SELECT id, problem_id, language, source_code, status,

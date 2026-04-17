@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     response::{Html, IntoResponse, Json, Redirect, Response},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tera::Context;
 use uuid::Uuid;
@@ -92,6 +92,8 @@ pub async fn problems_submit(
 
     let language = match form.language.as_str() {
         "rust" => Language::Rust,
+        "python" => Language::Python,
+        "pypy" => Language::PyPy,
         _ => Language::Cpp,
     };
 
@@ -124,6 +126,39 @@ pub async fn problems_submit(
     }).await.map_err(|e| HtmlError(anyhow::anyhow!("{e}")))?;
 
     Ok(Redirect::to(&format!("/submissions/{id}")).into_response())
+}
+
+#[derive(Serialize)]
+struct SubmissionListItem {
+    id: String,
+    problem_id: String,
+    language: String,
+    verdict: &'static str,
+    badge_class: &'static str,
+    time_used_ms: Option<u64>,
+}
+
+pub async fn submissions_index(
+    State(state): State<AppState>,
+) -> Result<Html<String>, HtmlError> {
+    let subs = db_sub::list_recent(&state.pool, 50).await?;
+    let rows: Vec<SubmissionListItem> = subs
+        .iter()
+        .map(|s| {
+            let (verdict, badge_class, _) = verdict_info(&s.status);
+            SubmissionListItem {
+                id: s.id.to_string(),
+                problem_id: s.problem_id.clone(),
+                language: s.language.to_db().to_string(),
+                verdict,
+                badge_class,
+                time_used_ms: s.time_used_ms,
+            }
+        })
+        .collect();
+    let mut ctx = Context::new();
+    ctx.insert("submissions", &rows);
+    render(&state.tera, "submissions/index.html", ctx)
 }
 
 pub async fn submissions_detail(
