@@ -19,6 +19,6 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(handlers::health))
         .route("/submit", post(handlers::submit))
-        .route("/result/:id", get(handlers::get_result))
+        .route("/result/{id}", get(handlers::get_result))
         .with_state(state)
 }

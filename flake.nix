@@ -81,7 +81,6 @@
               echo "Initializing local PostgreSQL in .pg/ ..."
               mkdir -p "$PGHOST"
               initdb -D "$PGDATA" --no-locale --encoding=UTF8 -U "$USER" -A trust 2>/dev/null
-              echo "listen_addresses = ''''" >> "$PGDATA/postgresql.conf"
               echo "unix_socket_directories = '$PGHOST'" >> "$PGDATA/postgresql.conf"
             fi
           '';
