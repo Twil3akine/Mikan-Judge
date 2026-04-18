@@ -254,7 +254,7 @@ pre code.hljs {
 /* ---- Standings ---- */
 .standings-table th, .standings-table td { white-space: nowrap; }
 .standings-table td { padding-top: 1rem; padding-bottom: 1rem; }
-.standings-table tr:hover td { background: inherit; }
+.standings-table tr:hover td { background: var(--card); }
 
 /* ---- Cooldown toast ---- */
 .cooldown-toast {
