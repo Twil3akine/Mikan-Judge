@@ -36,8 +36,9 @@ pub async fn create_router(state: AppState) -> Router {
         .route("/register", get(handlers::register_form).post(handlers::register))
         .route("/login",    get(handlers::login_form).post(handlers::login))
         .route("/logout",   post(handlers::logout))
-        // ---- トップ（コンテスト一覧） ----
+        // ---- トップ（ランディング）・コンテスト一覧 ----
         .route("/", get(handlers::index))
+        .route("/contests", get(handlers::contests_index))
         // ---- コンテスト内ルート ----
         .route("/contests/{contest_id}", get(handlers::contest_detail))
         .route("/contests/{contest_id}/problems", get(handlers::contest_problems_index))
