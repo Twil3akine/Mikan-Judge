@@ -34,7 +34,8 @@ src/
 
 | ルート | ハンドラ | 説明 |
 |---|---|---|
-| `GET /` | `index` | コンテスト一覧 |
+| `GET /` | `index` | ランディングページ（開催中コンテストのみ・About） |
+| `GET /contests` | `contests_index` | コンテスト一覧（全ステータス） |
 | `GET /contests/:id` | `contest_detail` | → `/contests/:id/problems` にリダイレクト |
 | `GET /contests/:id/problems` | `contest_problems_index` | コンテスト内問題一覧 |
 | `GET /contests/:id/problems/:pid` | `contest_problem_detail` | 問題詳細・提出フォーム |
@@ -111,7 +112,8 @@ src/
 ### Templates (Tera)
 - `templates/base.html`: ナビ（`contest_id` が Some のときコンテスト内リンク、None のときコンテスト一覧のみ）・KaTeX・highlight.js・htmx を含む共通レイアウト
 - 全ハンドラは `contest_id: Option<String>` をコンテキストに挿入する
-- `templates/index.html`: ランディングページ（コンテスト一覧 Ongoing/Upcoming/Past）
+- `templates/index.html`: ランディングページ（開催中コンテストのみ・About・連絡先）
+- `templates/contests/list.html`: コンテスト一覧（Ongoing / Upcoming / Past 全ステータス）
 - `templates/auth/`: login.html / register.html
 - `templates/contests/problems/`: index.html / detail.html（提出フォーム・クールダウントースト）
 - `templates/contests/submissions/`: index.html（ページネーション）/ detail.html
@@ -159,8 +161,8 @@ problems/<id>/
 
 ## Git Workflow
 
-- `master` への直接プッシュ禁止
-- 機能ブランチ（`feat/xxx`）で作業
+- `master` への直接コミット・プッシュは禁止（「コミットして」と言われても必ずブランチを切ること）
+- 作業開始時に必ず機能ブランチ（`feat/xxx`）を切る
 - PR を作成して master にマージする
 - コミットは細かく分ける（migration / DB / handler / template / CSS は別コミット）
 - コミットメッセージは `feat:` / `fix:` / `chore:` / `style:` / `docs:` プレフィックスを使う
