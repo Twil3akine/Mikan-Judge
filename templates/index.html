@@ -3,22 +3,23 @@
 
 {% block content %}
 <!-- Hero -->
-<div style="text-align:center;padding:3rem 0 2rem">
-  <div style="font-size:4rem;line-height:1">🍊</div>
-  <h1 style="font-size:2.4rem;margin:.5rem 0 .25rem">MikanJudge</h1>
-  <p style="color:var(--muted);font-size:1.05rem">競技プログラミングオンラインジャッジ</p>
+<div style="text-align:center;padding:4rem 0 3rem">
+  <div style="font-size:5rem;line-height:1">🍊</div>
+  <h1 style="font-size:2.6rem;margin:.5rem 0 .5rem">MikanJudge</h1>
+  <p style="color:var(--muted);font-size:1.1rem;margin-bottom:.25rem">競技プログラミングオンラインジャッジ</p>
+  <p style="color:var(--muted);font-size:.95rem">和歌山大学競技プログラミングサークル <strong>WCPC</strong> が運営しています</p>
   {% if not current_user %}
-  <div style="margin-top:1.5rem;display:flex;gap:.75rem;justify-content:center">
-    <a href="/register" class="btn" style="padding:.55rem 1.5rem">新規登録</a>
-    <a href="/login" class="btn" style="padding:.55rem 1.5rem;background:#fff;color:var(--primary);border:1.5px solid var(--primary)">ログイン</a>
+  <div style="margin-top:1.75rem;display:flex;gap:.75rem;justify-content:center">
+    <a href="/register" class="btn" style="padding:.6rem 1.75rem;font-size:1rem">新規登録</a>
+    <a href="/login" class="btn" style="padding:.6rem 1.75rem;font-size:1rem;background:#fff;color:var(--primary);border:1.5px solid var(--primary)">ログイン</a>
   </div>
   {% endif %}
 </div>
 
-<!-- Ongoing -->
+<!-- Ongoing contests -->
 {% if ongoing %}
-<h2 style="margin-bottom:.75rem">開催中</h2>
-<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem">
+<h2 style="margin-bottom:.75rem">🔥 開催中のコンテスト</h2>
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:2rem">
   <table>
     <thead><tr>
       <th>コンテスト名</th>
@@ -38,67 +39,22 @@
     </tbody>
   </table>
 </div>
-{% endif %}
-
-<!-- Upcoming -->
-{% if upcoming %}
-<h2 style="margin-bottom:.75rem">予定</h2>
-<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem">
-  <table>
-    <thead><tr>
-      <th>コンテスト名</th>
-      <th>開始</th>
-      <th>終了</th>
-      <th>状態</th>
-    </tr></thead>
-    <tbody>
-      {% for c in upcoming %}
-      <tr>
-        <td>{{ c.title }}</td>
-        <td style="color:var(--muted);font-size:.875rem">{{ c.start_time }}</td>
-        <td style="color:var(--muted);font-size:.875rem">{{ c.end_time }}</td>
-        <td><span class="badge badge-{{ c.status_class }}">{{ c.status_label }}</span></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+{% else %}
+<div class="card" style="text-align:center;padding:2.5rem;color:var(--muted);margin-bottom:2rem">
+  <p style="font-size:1rem">現在開催中のコンテストはありません</p>
+  <p style="margin-top:.5rem;font-size:.875rem"><a href="/contests">コンテスト一覧</a>で予定・過去のコンテストを確認できます</p>
 </div>
 {% endif %}
 
-<!-- No contests placeholder -->
-{% if not ongoing and not upcoming and not past %}
-<div class="card" style="text-align:center;padding:3rem;color:var(--muted)">
-  <p style="font-size:1.1rem">コンテストはまだありません</p>
-  <p style="margin-top:.5rem;font-size:.875rem">問題を解きたい方は <a href="/problems">問題一覧</a> をご覧ください</p>
+<!-- About / Contact -->
+<div class="card" style="padding:1.75rem 2rem;margin-bottom:1rem">
+  <h2 style="margin:0 0 1rem;font-size:1.2rem">MikanJudge について</h2>
+  <p style="color:var(--muted);font-size:.95rem;line-height:1.7;margin:0 0 .75rem">
+    MikanJudge は <strong>WCPC（和歌山大学競技プログラミングサークル）</strong> 向けのオンラインジャッジシステムです。
+    C++17・Rust・Python3（CPython/PyPy）に対応しており、コンテスト形式での出題・採点が可能です。
+  </p>
+  <p style="color:var(--muted);font-size:.9rem;margin:0">
+    不具合・ご要望は開発者（<a href="https://twitter.com/twil3akine" target="_blank" rel="noopener">Twitter: @twil3akine</a> / <a href="https://github.com/twil3akine" target="_blank" rel="noopener">GitHub: @twil3akine</a>）までお知らせください。
+  </p>
 </div>
-{% endif %}
-
-<!-- Past -->
-{% if past %}
-<details style="margin-top:1rem">
-  <summary style="cursor:pointer;font-size:1rem;font-weight:700;color:var(--muted);padding:.5rem 0">
-    過去のコンテスト（{{ past | length }}件）
-  </summary>
-  <div class="card" style="padding:0;overflow:hidden;margin-top:.75rem">
-    <table>
-      <thead><tr>
-        <th>コンテスト名</th>
-        <th>開始</th>
-        <th>終了</th>
-        <th>状態</th>
-      </tr></thead>
-      <tbody>
-        {% for c in past %}
-        <tr style="cursor:pointer" onclick="location.href='/contests/{{ c.id }}'">
-          <td><a href="/contests/{{ c.id }}">{{ c.title }}</a></td>
-          <td style="color:var(--muted);font-size:.875rem">{{ c.start_time }}</td>
-          <td style="color:var(--muted);font-size:.875rem">{{ c.end_time }}</td>
-          <td><span class="badge badge-{{ c.status_class }}">{{ c.status_label }}</span></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</details>
-{% endif %}
 {% endblock %}
