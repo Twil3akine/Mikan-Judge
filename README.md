@@ -117,11 +117,12 @@ src/
     └── mod.rs           # ジャッジワーカー（tokio mpsc チャンネル）
 templates/
 ├── base.html
-├── index.html           # ランディングページ（コンテスト一覧）
+├── index.html           # ランディングページ（開催中コンテストのみ・About）
 ├── auth/
 │   ├── login.html
 │   └── register.html
 ├── contests/
+│   ├── list.html        # コンテスト一覧（全ステータス）
 │   ├── problems/        # コンテスト内問題一覧・詳細
 │   ├── submissions/     # コンテスト内提出一覧・詳細
 │   └── standings.html   # 順位表
@@ -137,7 +138,8 @@ static/
 
 | パス | 説明 |
 |---|---|
-| `/` | コンテスト一覧 |
+| `/` | ランディングページ（開催中コンテストのみ・About） |
+| `/contests` | コンテスト一覧（開催中・予定・過去） |
 | `/contests/:id/problems` | コンテスト内問題一覧 |
 | `/contests/:id/problems/:pid` | 問題詳細・提出フォーム |
 | `/contests/:id/submissions` | 提出一覧（ページネーション付き） |
@@ -146,7 +148,8 @@ static/
 
 ## Git ワークフロー
 
-- `master` への直接プッシュ禁止
-- 機能ブランチ（`feat/xxx`）で作業し、PR を作成してマージ
-- コミットは機能単位で細かく分ける
+- `master` への直接コミット・プッシュ禁止
+- 作業開始時に必ず機能ブランチ（`feat/xxx`）を切る
+- PR を作成して master にマージ
+- コミットは機能単位で細かく分ける（handler / template / CSS は別コミット）
 - コミットメッセージは `feat:` / `fix:` / `chore:` / `style:` / `docs:` プレフィックスを使う
