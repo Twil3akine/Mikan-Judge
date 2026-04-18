@@ -206,9 +206,48 @@ pub async fn logout(session: Session) -> Result<Response, HtmlError> {
     Ok(Redirect::to("/login").into_response())
 }
 
-// ---- トップページ（コンテスト一覧） ----
+// ---- トップページ（ランディング） ----
 
 pub async fn index(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<Html<String>, HtmlError> {
+    let lists = db_contest::list_grouped(&state.pool).await?;
+
+    #[derive(Serialize)]
+    struct ContestItem {
+        id: String,
+        title: String,
+        description: String,
+        start_time: String,
+        end_time: String,
+        status_label: &'static str,
+        status_class: &'static str,
+    }
+
+    fn to_item(c: &crate::types::Contest) -> ContestItem {
+        let st = c.status();
+        ContestItem {
+            id: c.id.clone(),
+            title: c.title.clone(),
+            description: c.description.clone(),
+            start_time: c.start_time.format("%Y/%m/%d %H:%M").to_string(),
+            end_time: c.end_time.format("%Y/%m/%d %H:%M").to_string(),
+            status_label: st.label(),
+            status_class: st.badge_class(),
+        }
+    }
+
+    let mut ctx = Context::new();
+    ctx.insert("ongoing", &lists.ongoing.iter().map(to_item).collect::<Vec<_>>());
+    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert("contest_id", &Option::<String>::None);
+    render(&state.tera, "index.html", ctx)
+}
+
+// ---- コンテスト一覧ページ ----
+
+pub async fn contests_index(
     State(state): State<AppState>,
     session: Session,
 ) -> Result<Html<String>, HtmlError> {
@@ -244,7 +283,7 @@ pub async fn index(
     ctx.insert("past",     &lists.past.iter().map(to_item).collect::<Vec<_>>());
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     ctx.insert("contest_id", &Option::<String>::None);
-    render(&state.tera, "index.html", ctx)
+    render(&state.tera, "contests/list.html", ctx)
 }
 
 // ---- コンテスト詳細（→ 問題一覧へリダイレクト） ----
