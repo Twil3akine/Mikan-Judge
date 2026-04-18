@@ -11,9 +11,9 @@
   <table class="standings-table">
     <thead>
       <tr>
-        <th style="width:5rem;text-align:center;padding-left:0;padding-right:0">順位</th>
+        <th style="width:4rem;text-align:center">順位</th>
         <th>ユーザ</th>
-        <th style="text-align:right;padding-right:1.5rem">得点</th>
+        <th style="text-align:right">得点</th>
         {% for ph in problem_headers %}
         <th style="text-align:center;width:8rem">
           <a href="/contests/{{ contest_id }}/problems/{{ ph.problem_id }}"
@@ -27,7 +27,7 @@
     <tbody>
       {% for row in standings %}
       <tr>
-        <td style="text-align:center;font-weight:700;font-size:1.05rem;padding-left:0;padding-right:0">
+        <td style="text-align:center;font-weight:700">
           {% if row.rank == 1 %}
           <span style="color:#f59e0b">🥇 1</span>
           {% elif row.rank == 2 %}
@@ -39,14 +39,14 @@
           {% endif %}
         </td>
         <td style="font-weight:600">{{ row.username }}</td>
-        <td style="text-align:right;padding-right:1.5rem;font-weight:700;font-size:1.05rem;color:var(--primary)">
+        <td style="text-align:right;font-weight:700;color:var(--primary)">
           {{ row.total_score }}
         </td>
         {% for pc in row.problems %}
         <td style="text-align:center">
           {% if pc.ac_time %}
-          <div style="color:var(--ac);font-weight:600;font-size:.85rem">{{ pc.score }}</div>
-          <div style="color:var(--muted);font-size:.75rem">{{ pc.ac_time }}</div>
+          <span style="color:var(--ac);font-weight:600">{{ pc.score }}</span>
+          <span style="color:var(--muted);font-size:.8rem;margin-left:.3rem">{{ pc.ac_time }}</span>
           {% else %}
           <span style="color:var(--muted)">—</span>
           {% endif %}
