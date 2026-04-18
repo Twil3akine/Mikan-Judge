@@ -5,10 +5,11 @@ use uuid::Uuid;
 
 use crate::types::{JudgeStatus, Language, Submission};
 
-/// DB の行に対応する構造体（sqlx の FromRow が使える型のみ）
+/// 単一提出取得用（user_id のみ保持）
 #[derive(Debug, sqlx::FromRow)]
 struct SubmissionRow {
     id: Uuid,
+    user_id: Option<Uuid>,
     problem_id: String,
     language: String,
     source_code: String,
@@ -30,6 +31,7 @@ impl SubmissionRow {
             .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok());
         Submission {
             id: self.id,
+            user_id: self.user_id,
             problem_id: self.problem_id,
             language: Language::from_db(&self.language),
             source_code: self.source_code,
@@ -43,13 +45,31 @@ impl SubmissionRow {
     }
 }
 
+/// 提出一覧取得用（users テーブル LEFT JOIN でユーザ名付き）
+#[derive(Debug, sqlx::FromRow)]
+pub struct SubmissionListRow {
+    pub id: Uuid,
+    #[allow(dead_code)]
+    pub user_id: Option<Uuid>,
+    pub username: Option<String>,
+    pub problem_id: String,
+    pub language: String,
+    pub status: String,
+    pub time_used_ms: Option<i64>,
+    pub memory_used_kb: Option<i64>,
+    pub testcase_results: Option<String>,
+    #[allow(dead_code)]
+    pub created_at: DateTime<Utc>,
+}
+
 pub async fn insert(pool: &PgPool, sub: &Submission) -> Result<()> {
     sqlx::query(
-        "INSERT INTO submissions (id, problem_id, language, source_code, status)
-         VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO submissions (id, problem_id, user_id, language, source_code, status)
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(sub.id)
     .bind(&sub.problem_id)
+    .bind(sub.user_id)
     .bind(sub.language.to_db())
     .bind(&sub.source_code)
     .bind(sub.status.to_db())
@@ -60,7 +80,7 @@ pub async fn insert(pool: &PgPool, sub: &Submission) -> Result<()> {
 
 pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Submission>> {
     let row = sqlx::query_as::<_, SubmissionRow>(
-        "SELECT id, problem_id, language, source_code, status,
+        "SELECT id, user_id, problem_id, language, source_code, status,
                 time_used_ms, memory_used_kb, stdout, stderr, testcase_results, created_at
          FROM submissions WHERE id = $1",
     )
@@ -99,16 +119,18 @@ pub async fn update_result(
     Ok(())
 }
 
-pub async fn list_recent(pool: &PgPool, limit: i64) -> Result<Vec<Submission>> {
-    let rows = sqlx::query_as::<_, SubmissionRow>(
-        "SELECT id, problem_id, language, source_code, status,
-                time_used_ms, memory_used_kb, stdout, stderr, testcase_results, created_at
-         FROM submissions ORDER BY created_at DESC LIMIT $1",
+pub async fn list_recent(pool: &PgPool, limit: i64) -> Result<Vec<SubmissionListRow>> {
+    let rows = sqlx::query_as::<_, SubmissionListRow>(
+        "SELECT s.id, s.user_id, u.username, s.problem_id, s.language, s.status,
+                s.time_used_ms, s.memory_used_kb, s.testcase_results, s.created_at
+         FROM submissions s
+         LEFT JOIN users u ON s.user_id = u.id
+         ORDER BY s.created_at DESC LIMIT $1",
     )
     .bind(limit)
     .fetch_all(pool)
     .await?;
-    Ok(rows.into_iter().map(|r| r.into_submission()).collect())
+    Ok(rows)
 }
 
 pub async fn update_status(pool: &PgPool, id: Uuid, status: &JudgeStatus) -> Result<()> {

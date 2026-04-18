@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}MikanJudge{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<div style="text-align:center;padding:3rem 0 2rem">
+  <div style="font-size:4rem;line-height:1">🍊</div>
+  <h1 style="font-size:2.4rem;margin:.5rem 0 .25rem">MikanJudge</h1>
+  <p style="color:var(--muted);font-size:1.05rem">競技プログラミングオンラインジャッジ</p>
+  {% if not current_user %}
+  <div style="margin-top:1.5rem;display:flex;gap:.75rem;justify-content:center">
+    <a href="/register" class="btn" style="padding:.55rem 1.5rem">新規登録</a>
+    <a href="/login" class="btn" style="padding:.55rem 1.5rem;background:#fff;color:var(--primary);border:1.5px solid var(--primary)">ログイン</a>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Ongoing -->
+{% if ongoing %}
+<h2 style="margin-bottom:.75rem">開催中</h2>
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem">
+  <table>
+    <thead><tr>
+      <th>コンテスト名</th>
+      <th>開始</th>
+      <th>終了</th>
+      <th>状態</th>
+    </tr></thead>
+    <tbody>
+      {% for c in ongoing %}
+      <tr style="cursor:pointer" onclick="location.href='/contests/{{ c.id }}'">
+        <td><a href="/contests/{{ c.id }}">{{ c.title }}</a></td>
+        <td style="color:var(--muted);font-size:.875rem">{{ c.start_time }}</td>
+        <td style="color:var(--muted);font-size:.875rem">{{ c.end_time }}</td>
+        <td><span class="badge badge-{{ c.status_class }}">{{ c.status_label }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Upcoming -->
+{% if upcoming %}
+<h2 style="margin-bottom:.75rem">予定</h2>
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem">
+  <table>
+    <thead><tr>
+      <th>コンテスト名</th>
+      <th>開始</th>
+      <th>終了</th>
+      <th>状態</th>
+    </tr></thead>
+    <tbody>
+      {% for c in upcoming %}
+      <tr>
+        <td>{{ c.title }}</td>
+        <td style="color:var(--muted);font-size:.875rem">{{ c.start_time }}</td>
+        <td style="color:var(--muted);font-size:.875rem">{{ c.end_time }}</td>
+        <td><span class="badge badge-{{ c.status_class }}">{{ c.status_label }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- No contests placeholder -->
+{% if not ongoing and not upcoming and not past %}
+<div class="card" style="text-align:center;padding:3rem;color:var(--muted)">
+  <p style="font-size:1.1rem">コンテストはまだありません</p>
+  <p style="margin-top:.5rem;font-size:.875rem">問題を解きたい方は <a href="/problems">問題一覧</a> をご覧ください</p>
+</div>
+{% endif %}
+
+<!-- Past -->
+{% if past %}
+<details style="margin-top:1rem">
+  <summary style="cursor:pointer;font-size:1rem;font-weight:700;color:var(--muted);padding:.5rem 0">
+    過去のコンテスト（{{ past | length }}件）
+  </summary>
+  <div class="card" style="padding:0;overflow:hidden;margin-top:.75rem">
+    <table>
+      <thead><tr>
+        <th>コンテスト名</th>
+        <th>開始</th>
+        <th>終了</th>
+        <th>状態</th>
+      </tr></thead>
+      <tbody>
+        {% for c in past %}
+        <tr style="cursor:pointer" onclick="location.href='/contests/{{ c.id }}'">
+          <td><a href="/contests/{{ c.id }}">{{ c.title }}</a></td>
+          <td style="color:var(--muted);font-size:.875rem">{{ c.start_time }}</td>
+          <td style="color:var(--muted);font-size:.875rem">{{ c.end_time }}</td>
+          <td><span class="badge badge-{{ c.status_class }}">{{ c.status_label }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+{% endblock %}

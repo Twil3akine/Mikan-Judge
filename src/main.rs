@@ -4,6 +4,7 @@ mod api;
 mod db;
 mod problem;
 mod sandbox;
+mod session_store;
 mod types;
 mod worker;
 
@@ -38,7 +39,7 @@ async fn main() {
     let problems_dir = Arc::new(std::path::PathBuf::from("problems"));
 
     let state = api::AppState { pool, job_tx, tera, problems_dir };
-    let app = api::create_router(state);
+    let app = api::create_router(state).await;
 
     let addr = "0.0.0.0:3000";
     tracing::info!("Listening on {addr}");

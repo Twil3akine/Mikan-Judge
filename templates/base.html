@@ -27,6 +27,16 @@
     <a class="logo" href="/">🍊 MikanJudge</a>
     <a href="/problems">問題一覧</a>
     <a href="/submissions">提出一覧</a>
+    <span style="flex:1"></span>
+    {% if current_user %}
+    <span style="color:var(--muted);font-size:.875rem">{{ current_user }}</span>
+    <form method="POST" action="/logout" style="margin:0">
+      <button type="submit" class="btn" style="padding:.6rem .75rem;font-size:.8rem">ログアウト</button>
+    </form>
+    {% else %}
+    <a href="/login">ログイン</a>
+    <a href="/register">新規登録</a>
+    {% endif %}
   </nav>
   <main>
     {% block content %}{% endblock %}

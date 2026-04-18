@@ -8,6 +8,7 @@
   <table>
     <thead>
       <tr>
+        <th>ユーザ</th>
         <th>問題</th>
         <th>言語</th>
         <th>結果</th>
@@ -19,6 +20,7 @@
     <tbody>
       {% for s in submissions %}
       <tr style="cursor:pointer" onclick="location.href='/submissions/{{ s.id }}'">
+        <td>{% if s.username %}<a href="#" onclick="event.stopPropagation()">{{ s.username }}</a>{% else %}<span style="color:var(--muted)">—</span>{% endif %}</td>
         <td><a href="/problems/{{ s.problem_id }}" onclick="event.stopPropagation()">{{ s.problem_title }}</a></td>
         <td>{{ s.language }}</td>
         <td><span class="badge badge-{{ s.badge_class }}">{{ s.verdict }}</span></td>

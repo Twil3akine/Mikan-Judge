@@ -20,8 +20,12 @@ sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid"
 chrono = { version = "0.4", features = ["serde"] }
 tera = "1"
 tower-http = { version = "0.6", features = ["fs"] }
+tower-sessions = "0.15"
+async-trait = "0.1"
+time = "0.3"
 pulldown-cmark = "0.12"
 toml = "0.8"
+argon2 = { version = "0.5", features = ["std"] }
 
 # seccomp は Linux 専用。本番VPSでは apt install libseccomp-dev が必要。
 [target.'cfg(target_os = "linux")'.dependencies]
