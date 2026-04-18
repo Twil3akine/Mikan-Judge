@@ -40,8 +40,8 @@
         </td>
         <td style="font-weight:600">
           {{ row.username }}
-          {% if row.last_ac_time %}
-          <div style="font-size:.75rem;color:var(--muted);font-weight:400;margin-top:.15rem">{{ row.last_ac_time }}</div>
+          {% if row.elapsed_from_start %}
+          <span style="font-size:.8rem;color:var(--muted);font-weight:400;margin-left:.6rem">{{ row.elapsed_from_start }}</span>
           {% endif %}
         </td>
         <td style="text-align:right;font-weight:700;color:var(--primary)">
