@@ -637,16 +637,30 @@ pub async fn contest_standings(
         score: u64,
     }
 
+    fn fmt_elapsed(secs: i64) -> String {
+        let h = secs / 3600;
+        let m = (secs % 3600) / 60;
+        let s = secs % 60;
+        format!("{h}:{m:02}:{s:02}")
+    }
+
     #[derive(Serialize)]
     struct StandingRow {
         rank: usize,
         username: String,
         total_score: u64,
-        last_ac_time: Option<String>,
+        /// コンテスト開始からの経過時間（表示用）
+        elapsed_from_start: Option<String>,
         problems: Vec<ProblemCell>,
     }
 
-    let mut rows: Vec<StandingRow> = user_map
+    // ソート用に生の DateTime を保持する中間構造体
+    struct RowWithRaw {
+        row: StandingRow,
+        last_ac_raw: Option<DateTime<Utc>>,
+    }
+
+    let mut rows_raw: Vec<RowWithRaw> = user_map
         .values()
         .map(|ud| {
             let mut total_score: u64 = 0;
@@ -670,34 +684,47 @@ pub async fn contest_standings(
                     }
                 })
                 .collect();
-            StandingRow {
-                rank: 0,
-                username: ud.username.clone(),
-                total_score,
-                last_ac_time: last_ac.map(|t| t.format("%Y/%m/%d %H:%M:%S").to_string()),
-                problems,
+
+            let elapsed_from_start = last_ac.map(|t| {
+                let secs = (t - contest.start_time).num_seconds().max(0);
+                fmt_elapsed(secs)
+            });
+
+            RowWithRaw {
+                row: StandingRow {
+                    rank: 0,
+                    username: ud.username.clone(),
+                    total_score,
+                    elapsed_from_start,
+                    problems,
+                },
+                last_ac_raw: last_ac,
             }
         })
         .collect();
 
-    // 順位付け: 得点 DESC, last_ac_time ASC（NULL は最後）
-    rows.sort_by(|a, b| {
-        b.total_score.cmp(&a.total_score).then_with(|| match (&a.last_ac_time, &b.last_ac_time) {
-            (Some(at), Some(bt)) => at.cmp(bt),
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, None) => std::cmp::Ordering::Equal,
+    // 順位付け: 得点 DESC, last_ac_raw ASC（None は最後）
+    rows_raw.sort_by(|a, b| {
+        b.row.total_score.cmp(&a.row.total_score).then_with(|| {
+            match (&a.last_ac_raw, &b.last_ac_raw) {
+                (Some(at), Some(bt)) => at.cmp(bt),
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, None) => std::cmp::Ordering::Equal,
+            }
         })
     });
 
+    let mut rows: Vec<StandingRow> = rows_raw.into_iter().map(|r| r.row).collect();
+
     let mut prev_score = u64::MAX;
-    let mut prev_time: Option<String> = None;
+    let mut prev_elapsed: Option<String> = None;
     let mut current_rank = 0usize;
     for (i, row) in rows.iter_mut().enumerate() {
-        if row.total_score != prev_score || row.last_ac_time != prev_time {
+        if row.total_score != prev_score || row.elapsed_from_start != prev_elapsed {
             current_rank = i + 1;
             prev_score = row.total_score;
-            prev_time = row.last_ac_time.clone();
+            prev_elapsed = row.elapsed_from_start.clone();
         }
         row.rank = current_rank;
     }
