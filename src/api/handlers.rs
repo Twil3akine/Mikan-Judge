@@ -679,7 +679,10 @@ pub async fn contest_standings(
                     }
                     ProblemCell {
                         label: cp.label.clone(),
-                        ac_time: ac_at.map(|t| t.format("%H:%M:%S").to_string()),
+                        ac_time: ac_at.map(|t| {
+                            let secs = (*t - contest.start_time).num_seconds().max(0);
+                            fmt_elapsed(secs)
+                        }),
                         score: if ac_at.is_some() { score } else { 0 },
                     }
                 })
