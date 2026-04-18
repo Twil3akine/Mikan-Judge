@@ -38,15 +38,20 @@
           {{ row.rank }}
           {% endif %}
         </td>
-        <td style="font-weight:600">{{ row.username }}</td>
+        <td style="font-weight:600">
+          {{ row.username }}
+          {% if row.last_ac_time %}
+          <div style="font-size:.75rem;color:var(--muted);font-weight:400;margin-top:.15rem">{{ row.last_ac_time }}</div>
+          {% endif %}
+        </td>
         <td style="text-align:right;font-weight:700;color:var(--primary)">
           {{ row.total_score }}
         </td>
         {% for pc in row.problems %}
         <td style="text-align:center">
           {% if pc.ac_time %}
-          <span style="color:var(--ac);font-weight:600">{{ pc.score }}</span>
-          <span style="color:var(--muted);font-size:.8rem;margin-left:.3rem">{{ pc.ac_time }}</span>
+          <div style="color:var(--ac);font-weight:600">{{ pc.score }}</div>
+          <div style="color:var(--muted);font-size:.75rem;margin-top:.1rem">{{ pc.ac_time }}</div>
           {% else %}
           <span style="color:var(--muted)">—</span>
           {% endif %}
