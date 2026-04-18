@@ -68,4 +68,31 @@
     </tbody>
   </table>
 </div>
+
+<!-- ページネーション（常に表示） -->
+<nav class="pagination" aria-label="ページナビゲーション">
+  <a href="/contests/{{ contest_id }}/standings?page={{ current_page - 1 }}"
+     class="page-btn page-arrow{% if current_page <= 1 %} page-btn-disabled{% endif %}"
+     {% if current_page <= 1 %}aria-disabled="true" tabindex="-1"{% endif %}>
+    &#8249;
+  </a>
+
+  {% for n in pagination %}
+    {% if n == 0 %}
+    <span class="page-ellipsis">&#8230;</span>
+    {% elif n == current_page %}
+    <span class="page-btn page-btn-current" aria-current="page">{{ n }}</span>
+    {% else %}
+    <a href="/contests/{{ contest_id }}/standings?page={{ n }}" class="page-btn">{{ n }}</a>
+    {% endif %}
+  {% endfor %}
+
+  <a href="/contests/{{ contest_id }}/standings?page={{ current_page + 1 }}"
+     class="page-btn page-arrow{% if current_page >= total_pages %} page-btn-disabled{% endif %}"
+     {% if current_page >= total_pages %}aria-disabled="true" tabindex="-1"{% endif %}>
+    &#8250;
+  </a>
+
+  <span class="page-info">{{ current_page }} / {{ total_pages }} ページ</span>
+</nav>
 {% endblock %}
