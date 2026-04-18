@@ -72,6 +72,24 @@ fn verify_password(password: &str, hash: &str) -> bool {
     Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok()
 }
 
+/// ページネーションの表示項目を構築する。0 は省略記号（…）を表す。
+fn build_pagination(current: i64, total: i64) -> Vec<i64> {
+    if total <= 7 {
+        return (1..=total).collect();
+    }
+    let mut items: Vec<i64> = Vec::new();
+    let window = 2i64; // current の前後何ページ表示するか
+    let left = (current - window).max(2);
+    let right = (current + window).min(total - 1);
+
+    items.push(1);
+    if left > 2 { items.push(0); } // 省略記号
+    for n in left..=right { items.push(n); }
+    if right < total - 1 { items.push(0); } // 省略記号
+    items.push(total);
+    items
+}
+
 /// 提出クールダウンをチェックし、残りミリ秒を返す（0 なら OK）
 async fn check_submit_cooldown(session: &Session) -> i64 {
     const COOLDOWN_MS: i64 = 5000;
@@ -477,8 +495,8 @@ pub async fn contest_submissions_index(
         })
         .collect();
 
-    // ページネーション用の番号リスト
-    let page_numbers: Vec<i64> = (1..=total_pages).collect();
+    // ページネーション: 表示するページ番号を計算（0 = 省略記号）
+    let pagination = build_pagination(page, total_pages);
 
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
@@ -486,7 +504,7 @@ pub async fn contest_submissions_index(
     ctx.insert("submissions", &items);
     ctx.insert("current_page", &page);
     ctx.insert("total_pages", &total_pages);
-    ctx.insert("page_numbers", &page_numbers);
+    ctx.insert("pagination", &pagination);
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     render(&state.tera, "contests/submissions/index.html", ctx)
 }
