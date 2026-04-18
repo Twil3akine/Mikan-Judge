@@ -1,6 +1,6 @@
 # MikanJudge 🍊
 
-Rust 製の競技プログラミング用オンラインジャッジ。
+和歌山大学競技プログラミングサークル **WCPC** のための、Rust 製オンラインジャッジシステム。
 
 ## 機能
 
@@ -13,6 +13,9 @@ Rust 製の競技プログラミング用オンラインジャッジ。
 - ユーザ登録・ログイン（argon2 パスワードハッシュ）
 - PostgreSQL バックドセッション（サーバ再起動後も維持）
 - コンテスト管理（開催中 / 予定 / 終了）
+- 順位表（得点 DESC → コンテスト開始からの経過時間 ASC）
+- 提出一覧・順位表のページネーション（20件/ページ）
+- 提出間隔制限（5 秒クールダウン）
 
 ## 技術スタック
 
@@ -118,15 +121,32 @@ templates/
 ├── auth/
 │   ├── login.html
 │   └── register.html
-├── problems/
-└── submissions/
+├── contests/
+│   ├── problems/        # コンテスト内問題一覧・詳細
+│   ├── submissions/     # コンテスト内提出一覧・詳細
+│   └── standings.html   # 順位表
+├── problems/            # コンテスト外問題ページ（後方互換）
+└── submissions/         # コンテスト外提出ページ（後方互換）
 problems/                # 問題ファイル（Git 管理）
 migrations/              # sqlx マイグレーション
 static/
 └── style.css
 ```
 
+## URL 構成
+
+| パス | 説明 |
+|---|---|
+| `/` | コンテスト一覧 |
+| `/contests/:id/problems` | コンテスト内問題一覧 |
+| `/contests/:id/problems/:pid` | 問題詳細・提出フォーム |
+| `/contests/:id/submissions` | 提出一覧（ページネーション付き） |
+| `/contests/:id/submissions/:sid` | 提出詳細 |
+| `/contests/:id/standings` | 順位表（ページネーション付き） |
+
 ## Git ワークフロー
 
 - `master` への直接プッシュ禁止
-- 機能ブランチ（`feat/xxx`）または `dev` で作業し、PR を作成してマージ
+- 機能ブランチ（`feat/xxx`）で作業し、PR を作成してマージ
+- コミットは機能単位で細かく分ける
+- コミットメッセージは `feat:` / `fix:` / `chore:` / `style:` / `docs:` プレフィックスを使う
