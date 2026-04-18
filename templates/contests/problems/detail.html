@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}{{ problem_label }}. {{ problem.title }} - {{ contest_title }} | MikanJudge{% endblock %}
+
+{% block content %}
+
+{% if cooldown_remaining_ms and cooldown_remaining_ms > 0 %}
+<div id="cooldown-toast" class="cooldown-toast">
+  <span id="cooldown-msg">⏳ 提出間隔制限: あと <b id="cooldown-sec"></b> 秒待ってください</span>
+  <button onclick="document.getElementById('cooldown-toast').style.display='none'" class="cooldown-close">✕</button>
+</div>
+<script>
+(function() {
+  var remaining = {{ cooldown_remaining_ms }};
+  var toast = document.getElementById('cooldown-toast');
+  var secEl = document.getElementById('cooldown-sec');
+  function update() {
+    if (remaining <= 0) { toast.style.display = 'none'; return; }
+    secEl.textContent = (remaining / 1000).toFixed(1);
+    remaining -= 100;
+    setTimeout(update, 100);
+  }
+  update();
+})();
+</script>
+{% endif %}
+
+<div style="display:flex;gap:1rem;align-items:baseline;margin-bottom:.5rem;flex-wrap:wrap">
+  <span style="font-size:1.5rem;font-weight:700;color:var(--primary)">{{ problem_label }}.</span>
+  <h1 style="margin-bottom:0">{{ problem.title }}</h1>
+  <span style="color:var(--muted);font-size:.875rem">
+    配点: {{ problem.score }} 点　／　時間制限: {{ problem.time_limit_ms }} ms　／　メモリ制限: {{ problem.memory_limit_kb / 1024 }} MiB
+  </span>
+</div>
+
+<div class="card statement">
+  {{ problem.html_content | safe }}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">提出</h2>
+  <form method="POST" action="/contests/{{ contest_id }}/problems/{{ problem.id }}/submit" id="submit-form">
+    <div class="form-group">
+      <label for="language">言語</label>
+      <select name="language" id="language" onchange="updateEditorMode()">
+        <option value="cpp">C++17</option>
+        <option value="rust">Rust</option>
+        <option value="python">Python3 (CPython)</option>
+        <option value="pypy">Python3 (PyPy)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="source_code">ソースコード</label>
+      <textarea name="source_code" id="source_code"></textarea>
+    </div>
+    <button type="submit" class="btn" id="submit-btn">提出する</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/rust/rust.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<script>
+const LANG_MODES = {
+  cpp:    'text/x-c++src',
+  rust:   'text/x-rustsrc',
+  python: 'python',
+  pypy:   'python',
+};
+
+let editor;
+document.addEventListener('DOMContentLoaded', () => {
+  editor = CodeMirror.fromTextArea(document.getElementById('source_code'), {
+    mode:          LANG_MODES['cpp'],
+    theme:         'dracula',
+    lineNumbers:   true,
+    indentUnit:    4,
+    tabSize:       4,
+    indentWithTabs: false,
+    extraKeys:     { Tab: cm => cm.execCommand('insertSoftTab') },
+  });
+  editor.setSize('100%', '340px');
+});
+
+function updateEditorMode() {
+  const lang = document.getElementById('language').value;
+  editor.setOption('mode', LANG_MODES[lang]);
+}
+
+document.getElementById('submit-form').addEventListener('submit', e => {
+  editor.save();
+  if (!document.getElementById('source_code').value.trim()) {
+    e.preventDefault();
+    alert('ソースコードを入力してください');
+  }
+});
+</script>
+{% endblock %}

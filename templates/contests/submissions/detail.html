@@ -1,14 +1,20 @@
 {% extends "base.html" %}
-{% block title %}提出結果 - MikanJudge{% endblock %}
+{% block title %}提出結果 - {{ contest_title }} | MikanJudge{% endblock %}
 
 {% block content %}
-<h1>提出結果</h1>
+<div style="margin-bottom:1rem">
+  <h1 style="margin-bottom:.25rem">提出結果</h1>
+  <p style="color:var(--muted);font-size:.875rem">
+    <a href="/contests/{{ contest_id }}/problems">{{ contest_title }}</a>
+    &rsaquo; <a href="/contests/{{ contest_id }}/problems/{{ problem_id }}">{{ problem_label }}. {{ problem_title }}</a>
+  </p>
+</div>
 
 <div class="card">
   <div style="display:flex;gap:1.5rem;align-items:center;flex-wrap:wrap">
     <div id="verdict-area"
       {% if is_pending %}
-      hx-get="/submissions/{{ id }}/poll"
+      hx-get="/contests/{{ contest_id }}/submissions/{{ id }}/poll"
       hx-trigger="every 1s"
       hx-swap="outerHTML"
       {% endif %}>
@@ -16,7 +22,7 @@
     </div>
   </div>
   <div class="meta-row">
-    <span>問題: <b><a href="/problems/{{ problem_id }}">{{ problem_title }}</a></b></span>
+    <span>問題: <b><a href="/contests/{{ contest_id }}/problems/{{ problem_id }}">{{ problem_label }}. {{ problem_title }}</a></b></span>
     <span>言語: <b>{{ language }}</b></span>
     {% if time_used_ms %}
     <span>実行時間: <b>{{ time_used_ms }} ms</b></span>

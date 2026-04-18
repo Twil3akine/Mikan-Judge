@@ -36,8 +36,18 @@ pub async fn create_router(state: AppState) -> Router {
         .route("/register", get(handlers::register_form).post(handlers::register))
         .route("/login",    get(handlers::login_form).post(handlers::login))
         .route("/logout",   post(handlers::logout))
-        // ---- HTML ----
+        // ---- トップ（コンテスト一覧） ----
         .route("/", get(handlers::index))
+        // ---- コンテスト内ルート ----
+        .route("/contests/{contest_id}", get(handlers::contest_detail))
+        .route("/contests/{contest_id}/problems", get(handlers::contest_problems_index))
+        .route("/contests/{contest_id}/problems/{problem_id}", get(handlers::contest_problem_detail))
+        .route("/contests/{contest_id}/problems/{problem_id}/submit", post(handlers::contest_problem_submit))
+        .route("/contests/{contest_id}/submissions", get(handlers::contest_submissions_index))
+        .route("/contests/{contest_id}/submissions/{id}", get(handlers::contest_submission_detail))
+        .route("/contests/{contest_id}/submissions/{id}/poll", get(handlers::contest_submission_poll))
+        .route("/contests/{contest_id}/standings", get(handlers::contest_standings))
+        // ---- 旧 HTML（後方互換） ----
         .route("/problems", get(handlers::problems_index))
         .route("/problems/{id}", get(handlers::problems_detail))
         .route("/problems/{id}/submit", post(handlers::problems_submit))

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}提出一覧 - {{ contest_title }} | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem">
+  <h1 style="margin-bottom:.25rem">提出一覧</h1>
+  <p style="color:var(--muted);font-size:.875rem">{{ contest_title }}</p>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  {% if submissions %}
+  <table>
+    <thead>
+      <tr>
+        <th>ユーザ</th>
+        <th>問題</th>
+        <th>言語</th>
+        <th>結果</th>
+        <th>ケース</th>
+        <th>実行時間</th>
+        <th>メモリ</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in submissions %}
+      <tr style="cursor:pointer" onclick="location.href='/contests/{{ contest_id }}/submissions/{{ s.id }}'">
+        <td>{% if s.username %}<span>{{ s.username }}</span>{% else %}<span style="color:var(--muted)">—</span>{% endif %}</td>
+        <td>
+          <a href="/contests/{{ contest_id }}/problems/{{ s.problem_id }}" onclick="event.stopPropagation()">
+            <b>{{ s.problem_label }}</b>. {{ s.problem_title }}
+          </a>
+        </td>
+        <td>{{ s.language }}</td>
+        <td><span class="badge badge-{{ s.badge_class }}">{{ s.verdict }}</span></td>
+        <td>{% if s.tc_summary %}{{ s.tc_summary }} AC{% else %}—{% endif %}</td>
+        <td>{% if s.time_used_ms %}{{ s.time_used_ms }} ms{% else %}—{% endif %}</td>
+        <td>{% if s.memory_used_kb %}{{ s.memory_used_kb }} KB{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--muted);text-align:center;padding:2rem 0">まだ提出がありません</p>
+  {% endif %}
+</div>
+
+<!-- ページネーション（常に表示） -->
+<nav class="pagination" aria-label="ページナビゲーション">
+  <a href="/contests/{{ contest_id }}/submissions?page={{ current_page - 1 }}"
+     class="page-btn page-arrow{% if current_page <= 1 %} page-btn-disabled{% endif %}"
+     {% if current_page <= 1 %}aria-disabled="true" tabindex="-1"{% endif %}>
+    &#8249;
+  </a>
+
+  {% for n in pagination %}
+    {% if n == 0 %}
+    <span class="page-ellipsis">&#8230;</span>
+    {% elif n == current_page %}
+    <span class="page-btn page-btn-current" aria-current="page">{{ n }}</span>
+    {% else %}
+    <a href="/contests/{{ contest_id }}/submissions?page={{ n }}" class="page-btn">{{ n }}</a>
+    {% endif %}
+  {% endfor %}
+
+  <a href="/contests/{{ contest_id }}/submissions?page={{ current_page + 1 }}"
+     class="page-btn page-arrow{% if current_page >= total_pages %} page-btn-disabled{% endif %}"
+     {% if current_page >= total_pages %}aria-disabled="true" tabindex="-1"{% endif %}>
+    &#8250;
+  </a>
+
+  <span class="page-info">{{ current_page }} / {{ total_pages }} ページ</span>
+</nav>
+{% endblock %}

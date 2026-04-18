@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}順位表 - {{ contest_title }} | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem">
+  <h1 style="margin-bottom:.25rem">順位表</h1>
+  <p style="color:var(--muted);font-size:.875rem">{{ contest_title }}</p>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;overflow-x:auto">
+  <table class="standings-table">
+    <thead>
+      <tr>
+        <th style="width:4rem;text-align:center">順位</th>
+        <th>ユーザ</th>
+        <th style="text-align:right">得点</th>
+        {% for ph in problem_headers %}
+        <th style="text-align:center;width:8rem">
+          <a href="/contests/{{ contest_id }}/problems/{{ ph.problem_id }}"
+             style="color:var(--text);text-decoration:none;font-weight:700">
+            {{ ph.label }}
+          </a>
+        </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in standings %}
+      <tr>
+        <td style="text-align:center;font-weight:700">
+          {% if row.rank == 1 %}
+          <span style="color:#f59e0b">🥇 1</span>
+          {% elif row.rank == 2 %}
+          <span style="color:#9ca3af">🥈 2</span>
+          {% elif row.rank == 3 %}
+          <span style="color:#b45309">🥉 3</span>
+          {% else %}
+          {{ row.rank }}
+          {% endif %}
+        </td>
+        <td style="font-weight:600">
+          {{ row.username }}
+          {% if row.elapsed_from_start %}
+          <span style="font-size:.8rem;color:var(--muted);font-weight:400;margin-left:.6rem">{{ row.elapsed_from_start }}</span>
+          {% endif %}
+        </td>
+        <td style="text-align:right;font-weight:700;color:var(--primary)">
+          {{ row.total_score }}
+        </td>
+        {% for pc in row.problems %}
+        <td style="text-align:center">
+          {% if pc.ac_time %}
+          <div style="color:var(--ac);font-weight:600">{{ pc.score }}</div>
+          <div style="color:var(--muted);font-size:.75rem;margin-top:.1rem">{{ pc.ac_time }}</div>
+          {% else %}
+          <span style="color:var(--muted)">—</span>
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="99" style="text-align:center;color:var(--muted);padding:2rem">
+          まだ提出がありません
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ページネーション（常に表示） -->
+<nav class="pagination" aria-label="ページナビゲーション">
+  <a href="/contests/{{ contest_id }}/standings?page={{ current_page - 1 }}"
+     class="page-btn page-arrow{% if current_page <= 1 %} page-btn-disabled{% endif %}"
+     {% if current_page <= 1 %}aria-disabled="true" tabindex="-1"{% endif %}>
+    &#8249;
+  </a>
+
+  {% for n in pagination %}
+    {% if n == 0 %}
+    <span class="page-ellipsis">&#8230;</span>
+    {% elif n == current_page %}
+    <span class="page-btn page-btn-current" aria-current="page">{{ n }}</span>
+    {% else %}
+    <a href="/contests/{{ contest_id }}/standings?page={{ n }}" class="page-btn">{{ n }}</a>
+    {% endif %}
+  {% endfor %}
+
+  <a href="/contests/{{ contest_id }}/standings?page={{ current_page + 1 }}"
+     class="page-btn page-arrow{% if current_page >= total_pages %} page-btn-disabled{% endif %}"
+     {% if current_page >= total_pages %}aria-disabled="true" tabindex="-1"{% endif %}>
+    &#8250;
+  </a>
+
+  <span class="page-info">{{ current_page }} / {{ total_pages }} ページ</span>
+</nav>
+{% endblock %}
