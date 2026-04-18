@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}閲覧できません | MikanJudge{% endblock %}
+
+{% block content %}
+<div class="card" style="text-align:center;padding:3rem 2rem;max-width:480px;margin:4rem auto">
+  <div style="font-size:3rem;margin-bottom:1rem">🔒</div>
+  <h1 style="font-size:1.4rem;margin-bottom:.75rem">この提出は閲覧できません</h1>
+  <p style="color:var(--muted);font-size:.95rem;line-height:1.6;margin-bottom:1.5rem">
+    開催中のコンテストでは、提出者本人のみ詳細を閲覧できます。<br>
+    コンテスト終了後に閲覧可能になります。
+  </p>
+  <a href="/contests/{{ contest_id }}/submissions" class="btn" style="padding:.55rem 1.5rem">提出一覧に戻る</a>
+</div>
+{% endblock %}

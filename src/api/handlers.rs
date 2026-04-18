@@ -586,7 +586,11 @@ pub async fn contest_submission_detail(
     let is_ongoing = matches!(contest.status(), crate::types::ContestStatus::Ongoing);
     let is_owner = sub.user_id.map_or(false, |uid| Some(uid) == current_user_id);
     if is_ongoing && !is_owner {
-        return Err(HtmlError(anyhow::anyhow!("この提出は閲覧できません")));
+        let mut ctx = Context::new();
+        ctx.insert("contest_id", &contest_id);
+        ctx.insert("contest_title", &contest.title);
+        ctx.insert("current_user", &current_username(&session, &state.pool).await);
+        return render(&state.tera, "errors/forbidden.html", ctx);
     }
 
     let lang_hljs = match sub.language.to_db() {
