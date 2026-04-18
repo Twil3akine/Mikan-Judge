@@ -592,6 +592,7 @@ pub async fn contest_standings(
     State(state): State<AppState>,
     session: Session,
     Path(contest_id): Path<String>,
+    Query(pq): Query<PageQuery>,
 ) -> Result<Html<String>, HtmlError> {
     let contest = db_contest::get_by_id(&state.pool, &contest_id)
         .await?
@@ -752,11 +753,23 @@ pub async fn contest_standings(
         })
         .collect();
 
+    const PER_PAGE: i64 = 20;
+    let total = rows.len() as i64;
+    let total_pages = ((total + PER_PAGE - 1) / PER_PAGE).max(1);
+    let page = pq.page.unwrap_or(1).max(1).min(total_pages);
+    let start = ((page - 1) * PER_PAGE) as usize;
+    let end = (start + PER_PAGE as usize).min(rows.len());
+    let page_rows = &rows[start..end];
+    let pagination = build_pagination(page, total_pages);
+
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
     ctx.insert("contest_title", &contest.title);
     ctx.insert("problem_headers", &problem_headers);
-    ctx.insert("standings", &rows);
+    ctx.insert("standings", page_rows);
+    ctx.insert("current_page", &page);
+    ctx.insert("total_pages", &total_pages);
+    ctx.insert("pagination", &pagination);
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     render(&state.tera, "contests/standings.html", ctx)
 }
