@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}問題一覧 - {{ contest_title }} | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem">
+  <h1 style="margin-bottom:.25rem">{{ contest_title }}</h1>
+  <p style="color:var(--muted);font-size:.875rem">問題一覧</p>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:4rem">問題</th>
+        <th>タイトル</th>
+        <th>配点</th>
+        <th>時間制限</th>
+        <th>メモリ制限</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in problems %}
+      <tr style="cursor:pointer" onclick="location.href='/contests/{{ contest_id }}/problems/{{ p.id }}'">
+        <td style="font-weight:700;font-size:1.1rem;text-align:center">
+          <a href="/contests/{{ contest_id }}/problems/{{ p.id }}" onclick="event.stopPropagation()">{{ p.label }}</a>
+        </td>
+        <td><a href="/contests/{{ contest_id }}/problems/{{ p.id }}" onclick="event.stopPropagation()">{{ p.title }}</a></td>
+        <td>{{ p.score }} 点</td>
+        <td>{{ p.time_limit_ms }} ms</td>
+        <td>{{ p.memory_limit_kb / 1024 }} MiB</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="color:var(--muted);text-align:center;padding:2rem">問題がありません</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

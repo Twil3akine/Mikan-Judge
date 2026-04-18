@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
-use crate::types::{Contest, ContestStatus};
+use crate::types::{Contest, ContestProblem, ContestStatus};
 
 #[derive(Debug, sqlx::FromRow)]
 struct ContestRow {
@@ -35,8 +35,17 @@ pub async fn list_all(pool: &PgPool) -> Result<Vec<Contest>> {
     Ok(rows.into_iter().map(|r| r.into_contest()).collect())
 }
 
+pub async fn get_by_id(pool: &PgPool, contest_id: &str) -> Result<Option<Contest>> {
+    let row = sqlx::query_as::<_, ContestRow>(
+        "SELECT id, title, description, start_time, end_time FROM contests WHERE id = $1",
+    )
+    .bind(contest_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| r.into_contest()))
+}
+
 /// コンテストに紐付く problem_id のリストを返す（display_order 順）
-#[allow(dead_code)]
 pub async fn problem_ids(pool: &PgPool, contest_id: &str) -> Result<Vec<(String, String)>> {
     let rows: Vec<(String, String)> = sqlx::query_as(
         "SELECT label, problem_id FROM contest_problems
@@ -46,6 +55,33 @@ pub async fn problem_ids(pool: &PgPool, contest_id: &str) -> Result<Vec<(String,
     .fetch_all(pool)
     .await?;
     Ok(rows)
+}
+
+pub async fn problems_for_contest(
+    pool: &PgPool,
+    contest_id: &str,
+) -> Result<Vec<ContestProblem>> {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        label: String,
+        problem_id: String,
+        display_order: i32,
+    }
+    let rows = sqlx::query_as::<_, Row>(
+        "SELECT label, problem_id, display_order FROM contest_problems
+         WHERE contest_id = $1 ORDER BY display_order",
+    )
+    .bind(contest_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| ContestProblem {
+            label: r.label,
+            problem_id: r.problem_id,
+            display_order: r.display_order,
+        })
+        .collect())
 }
 
 /// コンテスト一覧を Upcoming / Ongoing / Past に分けて返す
@@ -62,9 +98,9 @@ pub async fn list_grouped(pool: &PgPool) -> Result<ContestLists> {
     let mut past = Vec::new();
     for c in all {
         match c.status() {
-            ContestStatus::Ongoing  => ongoing.push(c),
+            ContestStatus::Ongoing => ongoing.push(c),
             ContestStatus::Upcoming => upcoming.push(c),
-            ContestStatus::Past     => past.push(c),
+            ContestStatus::Past => past.push(c),
         }
     }
     // upcoming は開催が近い順に

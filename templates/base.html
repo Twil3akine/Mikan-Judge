@@ -25,8 +25,14 @@
 <body>
   <nav>
     <a class="logo" href="/">🍊 MikanJudge</a>
-    <a href="/problems">問題一覧</a>
-    <a href="/submissions">提出一覧</a>
+    {% if contest_id %}
+    <span class="nav-divider">|</span>
+    <a href="/contests/{{ contest_id }}/problems">問題一覧</a>
+    <a href="/contests/{{ contest_id }}/submissions">提出一覧</a>
+    <a href="/contests/{{ contest_id }}/standings">順位表</a>
+    {% else %}
+    <a href="/">コンテスト一覧</a>
+    {% endif %}
     <span style="flex:1"></span>
     {% if current_user %}
     <span style="color:var(--muted);font-size:.875rem">{{ current_user }}</span>

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}提出結果 - {{ contest_title }} | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem">
+  <h1 style="margin-bottom:.25rem">提出結果</h1>
+  <p style="color:var(--muted);font-size:.875rem">
+    <a href="/contests/{{ contest_id }}/problems">{{ contest_title }}</a>
+    &rsaquo; <a href="/contests/{{ contest_id }}/problems/{{ problem_id }}">{{ problem_label }}. {{ problem_title }}</a>
+  </p>
+</div>
+
+<div class="card">
+  <div style="display:flex;gap:1.5rem;align-items:center;flex-wrap:wrap">
+    <div id="verdict-area"
+      {% if is_pending %}
+      hx-get="/contests/{{ contest_id }}/submissions/{{ id }}/poll"
+      hx-trigger="every 1s"
+      hx-swap="outerHTML"
+      {% endif %}>
+      {% include "submissions/_verdict.html" %}
+    </div>
+  </div>
+  <div class="meta-row">
+    <span>問題: <b><a href="/contests/{{ contest_id }}/problems/{{ problem_id }}">{{ problem_label }}. {{ problem_title }}</a></b></span>
+    <span>言語: <b>{{ language }}</b></span>
+    {% if time_used_ms %}
+    <span>実行時間: <b>{{ time_used_ms }} ms</b></span>
+    {% endif %}
+    {% if memory_used_kb %}
+    <span>メモリ: <b>{{ memory_used_kb }} KB</b></span>
+    {% endif %}
+    {% if is_accepted and problem_score %}
+    <span>得点: <b style="color:var(--ac)">{{ problem_score }} 点</b></span>
+    {% endif %}
+  </div>
+</div>
+
+{% if testcase_results %}
+<div class="card">
+  <h2 style="margin-top:0">テストケース別結果</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>結果</th></tr>
+    </thead>
+    <tbody>
+      {% for v in testcase_results %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>
+          {% if v == "AC" %}<span class="badge badge-ac">AC</span>
+          {% elif v == "WA" %}<span class="badge badge-wa">WA</span>
+          {% elif v == "TLE" %}<span class="badge badge-tle">TLE</span>
+          {% elif v == "MLE" %}<span class="badge badge-mle">MLE</span>
+          {% elif v == "RE" %}<span class="badge badge-re">RE</span>
+          {% elif v == "--" %}<span class="badge badge-pending">--</span>
+          {% else %}<span class="badge badge-ce">{{ v }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">ソースコード</h2>
+  <pre><code class="language-{{ lang_hljs }}">{{ source_code }}</code></pre>
+</div>
+
+{% if stderr and stderr != "" %}
+<div class="card">
+  <h2 style="margin-top:0">エラー出力</h2>
+  <pre class="code-block">{{ stderr }}</pre>
+</div>
+{% endif %}
+
+{% if stdout and stdout != "" %}
+<div class="card">
+  <h2 style="margin-top:0">標準出力</h2>
+  <pre class="code-block">{{ stdout }}</pre>
+</div>
+{% endif %}
+{% endblock %}

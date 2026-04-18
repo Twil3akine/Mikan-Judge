@@ -35,6 +35,7 @@ nav {
 nav .logo { color: var(--primary); font-size: 1.25rem; font-weight: 800; text-decoration: none; }
 nav a { text-decoration: none; color: var(--text); font-weight: 500; }
 nav a:hover { color: var(--primary); }
+nav .nav-divider { color: var(--border); font-size: 1.2rem; margin: 0 -.5rem; }
 
 /* ---- Layout ---- */
 main { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
@@ -180,6 +181,83 @@ pre code.hljs {
   max-height: 400px;
   overflow-y: auto;
 }
+
+/* ---- Pagination ---- */
+.pagination {
+  display: flex;
+  gap: .4rem;
+  justify-content: center;
+  align-items: center;
+  margin: 1rem 0 2rem;
+  flex-wrap: wrap;
+}
+.page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.2rem;
+  height: 2.2rem;
+  padding: 0 .6rem;
+  border-radius: var(--radius);
+  font-size: .875rem;
+  font-weight: 500;
+  text-decoration: none;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  transition: background .12s, border-color .12s;
+}
+.page-btn:hover { background: #f3f4f6; border-color: var(--muted); }
+.page-btn-current {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  font-weight: 700;
+  cursor: default;
+}
+.page-btn-current:hover { background: var(--primary); }
+.page-btn-disabled {
+  color: var(--muted);
+  background: #f3f4f6;
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+.page-btn-ellipsis { color: var(--muted); padding: 0 .25rem; }
+
+/* ---- Standings ---- */
+.standings-table th, .standings-table td { white-space: nowrap; }
+
+/* ---- Cooldown toast ---- */
+.cooldown-toast {
+  position: fixed;
+  top: 5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff7ed;
+  border: 2px solid var(--primary);
+  border-radius: var(--radius);
+  padding: .75rem 1.25rem;
+  font-size: .95rem;
+  font-weight: 500;
+  color: #92400e;
+  z-index: 9999;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  animation: slide-in .2s ease;
+}
+@keyframes slide-in { from { opacity:0; top:4rem; } to { opacity:1; top:5rem; } }
+.cooldown-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 1rem;
+  padding: 0;
+  line-height: 1;
+}
+.cooldown-close:hover { color: var(--text); }
 
 /* stdout / stderr などプレーンテキスト用 */
 pre.code-block {
