@@ -581,16 +581,18 @@ pub async fn contest_submission_detail(
         .map(|cp| cp.label.clone())
         .unwrap_or_default();
 
+    // 開催中コンテストでは提出者本人のみ詳細を閲覧可能（情報を一切渡さない）
+    let current_user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    let is_ongoing = matches!(contest.status(), crate::types::ContestStatus::Ongoing);
+    let is_owner = sub.user_id.map_or(false, |uid| Some(uid) == current_user_id);
+    if is_ongoing && !is_owner {
+        return Err(HtmlError(anyhow::anyhow!("この提出は閲覧できません")));
+    }
+
     let lang_hljs = match sub.language.to_db() {
         "pypy" => "python",
         other => other,
     };
-
-    // 開催中コンテストでは提出者本人のみソースコードを閲覧可能
-    let current_user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
-    let is_ongoing = matches!(contest.status(), crate::types::ContestStatus::Ongoing);
-    let can_view_code = !is_ongoing
-        || sub.user_id.map_or(false, |uid| Some(uid) == current_user_id);
 
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
@@ -612,7 +614,6 @@ pub async fn contest_submission_detail(
     ctx.insert("testcase_results", &sub.testcase_results);
     ctx.insert("problem_score", &problem_score);
     ctx.insert("is_accepted", &matches!(sub.status, JudgeStatus::Accepted));
-    ctx.insert("can_view_code", &can_view_code);
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     render(&state.tera, "contests/submissions/detail.html", ctx)
 }

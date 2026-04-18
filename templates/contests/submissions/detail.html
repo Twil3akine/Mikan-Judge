@@ -66,11 +66,7 @@
 
 <div class="card">
   <h2 style="margin-top:0">ソースコード</h2>
-  {% if can_view_code %}
   <pre><code class="language-{{ lang_hljs }}">{{ source_code }}</code></pre>
-  {% else %}
-  <p style="color:var(--muted)">開催中のコンテストでは提出者本人のみソースコードを閲覧できます。</p>
-  {% endif %}
 </div>
 
 {% if stderr and stderr != "" %}
