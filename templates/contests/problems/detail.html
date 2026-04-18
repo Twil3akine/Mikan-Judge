@@ -38,6 +38,9 @@
 
 <div class="card">
   <h2 style="margin-top:0">提出</h2>
+  {% if not current_user %}
+  <p style="color:var(--muted)">提出するには <a href="/login">ログイン</a> が必要です。</p>
+  {% else %}
   <form method="POST" action="/contests/{{ contest_id }}/problems/{{ problem.id }}/submit" id="submit-form">
     <div class="form-group">
       <label for="language">言語</label>
@@ -54,10 +57,12 @@
     </div>
     <button type="submit" class="btn" id="submit-btn">提出する</button>
   </form>
+  {% endif %}
 </div>
 {% endblock %}
 
 {% block scripts %}
+{% if current_user %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
@@ -99,4 +104,5 @@ document.getElementById('submit-form').addEventListener('submit', e => {
   }
 });
 </script>
+{% endif %}
 {% endblock %}

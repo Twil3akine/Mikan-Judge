@@ -391,6 +391,12 @@ pub async fn contest_problem_submit(
     Path((contest_id, problem_id)): Path<(String, String)>,
     Form(form): Form<ProblemSubmitForm>,
 ) -> Result<Response, HtmlError> {
+    // ログインチェック
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    if user_id.is_none() {
+        return Ok(Redirect::to("/login").into_response());
+    }
+
     // クールダウンチェック
     let remaining = check_submit_cooldown(&session).await;
     if remaining > 0 {
@@ -409,8 +415,6 @@ pub async fn contest_problem_submit(
         "pypy" => Language::PyPy,
         _ => Language::Cpp,
     };
-
-    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
 
     let id = Uuid::new_v4();
     let sub = Submission {
@@ -576,6 +580,18 @@ pub async fn contest_submission_detail(
         .find(|cp| cp.problem_id == sub.problem_id)
         .map(|cp| cp.label.clone())
         .unwrap_or_default();
+
+    // 開催中コンテストでは提出者本人のみ詳細を閲覧可能（情報を一切渡さない）
+    let current_user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    let is_ongoing = matches!(contest.status(), crate::types::ContestStatus::Ongoing);
+    let is_owner = sub.user_id.map_or(false, |uid| Some(uid) == current_user_id);
+    if is_ongoing && !is_owner {
+        let mut ctx = Context::new();
+        ctx.insert("contest_id", &contest_id);
+        ctx.insert("contest_title", &contest.title);
+        ctx.insert("current_user", &current_username(&session, &state.pool).await);
+        return render(&state.tera, "errors/forbidden.html", ctx);
+    }
 
     let lang_hljs = match sub.language.to_db() {
         "pypy" => "python",
@@ -848,6 +864,11 @@ pub async fn problems_submit(
     Path(problem_id): Path<String>,
     Form(form): Form<ProblemSubmitForm>,
 ) -> Result<Response, HtmlError> {
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    if user_id.is_none() {
+        return Ok(Redirect::to("/login").into_response());
+    }
+
     let prob = problem::load_one(&state.problems_dir, &problem_id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
 
@@ -857,8 +878,6 @@ pub async fn problems_submit(
         "pypy" => Language::PyPy,
         _ => Language::Cpp,
     };
-
-    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
 
     let id = Uuid::new_v4();
     let sub = Submission {
