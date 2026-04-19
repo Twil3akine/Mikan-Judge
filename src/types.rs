@@ -42,8 +42,17 @@ impl Language {
         match self {
             Language::Cpp => "C++17",
             Language::Rust => "Rust",
-            Language::Python => "Python3 (CPython)",
-            Language::PyPy => "Python3 (PyPy)",
+            Language::Python => "Python (CPython)",
+            Language::PyPy => "Python (PyPy)",
+        }
+    }
+
+    pub fn display_name_versioned(&self, versions: &LanguageVersions) -> String {
+        match self {
+            Language::Cpp => format!("C++17 (GCC {})", versions.cpp),
+            Language::Rust => format!("Rust ({})", versions.rust),
+            Language::Python => format!("Python (CPython {})", versions.python),
+            Language::PyPy => format!("Python (PyPy {})", versions.pypy),
         }
     }
 
@@ -85,6 +94,66 @@ impl Language {
             ],
             _ => panic!("not a compiled language"),
         }
+    }
+}
+
+/// 各言語の実行環境バージョン（起動時に一度だけ検出してキャッシュする）
+#[derive(Debug, Clone)]
+pub struct LanguageVersions {
+    pub cpp: String,
+    pub rust: String,
+    pub python: String,
+    pub pypy: String,
+}
+
+impl LanguageVersions {
+    pub async fn detect() -> Self {
+        Self {
+            cpp:    detect_version("g++",    &["--version"]).await.unwrap_or_else(|| "?".into()),
+            rust:   detect_version("rustc",  &["--version"]).await.unwrap_or_else(|| "?".into()),
+            python: detect_version("python3", &["--version"]).await.unwrap_or_else(|| "?".into()),
+            pypy:   detect_version("pypy3",  &["--version"]).await.unwrap_or_else(|| "?".into()),
+        }
+    }
+}
+
+async fn detect_version(cmd: &str, args: &[&str]) -> Option<String> {
+    let out = tokio::process::Command::new(cmd)
+        .args(args)
+        .output()
+        .await
+        .ok()?;
+    // python3/pypy3 は --version を stderr に出す場合がある
+    let raw = if out.stdout.is_empty() {
+        String::from_utf8_lossy(&out.stderr).into_owned()
+    } else {
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let first_line = raw.lines().next()?.trim().to_string();
+    Some(parse_version(cmd, &first_line))
+}
+
+fn parse_version(cmd: &str, line: &str) -> String {
+    match cmd {
+        // "Python 3.13.1" → "3.13.1"
+        "python3" | "pypy3" => line
+            .split_whitespace()
+            .nth(1)
+            .unwrap_or(line)
+            .to_string(),
+        // "rustc 1.82.0 (f6e511eec 2024-10-15)" → "1.82.0"
+        "rustc" => line
+            .split_whitespace()
+            .nth(1)
+            .unwrap_or(line)
+            .to_string(),
+        // "g++ (Homebrew GCC 14.2.0...) 14.2.0" or "g++ (GCC) 14.2.0" → last word
+        "g++" => line
+            .split_whitespace()
+            .last()
+            .unwrap_or(line)
+            .to_string(),
+        _ => line.to_string(),
     }
 }
 
