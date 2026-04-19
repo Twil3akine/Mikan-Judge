@@ -367,11 +367,19 @@ pub async fn contest_problem_detail(
     let prob = problem::load_one(&state.problems_dir, &problem_id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
 
+    let lang_labels = serde_json::json!({
+        "cpp":    Language::Cpp.display_name_versioned(&state.lang_versions),
+        "rust":   Language::Rust.display_name_versioned(&state.lang_versions),
+        "python": Language::Python.display_name_versioned(&state.lang_versions),
+        "pypy":   Language::PyPy.display_name_versioned(&state.lang_versions),
+    });
+
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
     ctx.insert("contest_title", &contest.title);
     ctx.insert("problem", &prob);
     ctx.insert("problem_label", &label);
+    ctx.insert("lang_labels", &lang_labels);
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     ctx.insert("cooldown_remaining_ms", &query.cooldown_remaining_ms);
     render(&state.tera, "contests/problems/detail.html", ctx)
@@ -528,7 +536,7 @@ pub async fn contest_submissions_index(
                 problem_label,
                 problem_title,
                 username: s.username.clone(),
-                language: Language::from_db(&s.language).display_name().to_string(),
+                language: Language::from_db(&s.language).display_name_versioned(&state.lang_versions),
                 verdict,
                 badge_class,
                 time_used_ms: s.time_used_ms.map(|v| v as u64),
@@ -608,7 +616,7 @@ pub async fn contest_submission_detail(
     ctx.insert("problem_id", &sub.problem_id);
     ctx.insert("problem_title", &problem_title);
     ctx.insert("problem_label", &problem_label);
-    ctx.insert("language", &sub.language.display_name());
+    ctx.insert("language", &sub.language.display_name_versioned(&state.lang_versions));
     ctx.insert("lang_hljs", lang_hljs);
     ctx.insert("source_code", &sub.source_code);
     ctx.insert("verdict", verdict);
@@ -853,8 +861,15 @@ pub async fn problems_detail(
 ) -> Result<Html<String>, HtmlError> {
     let prob = problem::load_one(&state.problems_dir, &id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{id}' not found")))?;
+    let lang_labels = serde_json::json!({
+        "cpp":    Language::Cpp.display_name_versioned(&state.lang_versions),
+        "rust":   Language::Rust.display_name_versioned(&state.lang_versions),
+        "python": Language::Python.display_name_versioned(&state.lang_versions),
+        "pypy":   Language::PyPy.display_name_versioned(&state.lang_versions),
+    });
     let mut ctx = Context::new();
     ctx.insert("problem", &prob);
+    ctx.insert("lang_labels", &lang_labels);
     ctx.insert("contest_id", &Option::<String>::None);
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     ctx.insert("cooldown_remaining_ms", &Option::<i64>::None);
@@ -947,7 +962,7 @@ pub async fn submissions_index(
                 problem_label: String::new(),
                 problem_title,
                 username: s.username.clone(),
-                language: Language::from_db(&s.language).display_name().to_string(),
+                language: Language::from_db(&s.language).display_name_versioned(&state.lang_versions),
                 verdict,
                 badge_class,
                 time_used_ms: s.time_used_ms.map(|v| v as u64),
@@ -992,7 +1007,7 @@ pub async fn submissions_detail(
     ctx.insert("id", &sub.id.to_string());
     ctx.insert("problem_id", &sub.problem_id);
     ctx.insert("problem_title", &problem_title);
-    ctx.insert("language", &sub.language.display_name());
+    ctx.insert("language", &sub.language.display_name_versioned(&state.lang_versions));
     ctx.insert("lang_hljs", lang_hljs);
     ctx.insert("source_code", &sub.source_code);
     ctx.insert("verdict", verdict);
