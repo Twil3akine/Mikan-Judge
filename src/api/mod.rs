@@ -11,6 +11,7 @@ use tower_http::services::ServeDir;
 use tower_sessions::{SessionManagerLayer, cookie::SameSite};
 
 use crate::session_store::PgSessionStore;
+use crate::types::LanguageVersions;
 use crate::worker::JudgeJob;
 
 pub mod handlers;
@@ -21,6 +22,7 @@ pub struct AppState {
     pub job_tx: Sender<JudgeJob>,
     pub tera: Arc<Tera>,
     pub problems_dir: Arc<std::path::PathBuf>,
+    pub lang_versions: Arc<LanguageVersions>,
 }
 
 pub async fn create_router(state: AppState) -> Router {

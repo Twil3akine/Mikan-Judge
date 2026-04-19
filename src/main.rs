@@ -38,7 +38,14 @@ async fn main() {
     );
     let problems_dir = Arc::new(std::path::PathBuf::from("problems"));
 
-    let state = api::AppState { pool, job_tx, tera, problems_dir };
+    let lang_versions = Arc::new(types::LanguageVersions::detect().await);
+    tracing::info!(
+        cpp = %lang_versions.cpp, rust = %lang_versions.rust,
+        python = %lang_versions.python, pypy = %lang_versions.pypy,
+        "detected language versions"
+    );
+
+    let state = api::AppState { pool, job_tx, tera, problems_dir, lang_versions };
     let app = api::create_router(state).await;
 
     let addr = "0.0.0.0:3000";
