@@ -48,11 +48,15 @@ async fn main() {
     let state = api::AppState { pool, job_tx, tera, problems_dir, lang_versions };
     let app = api::create_router(state).await;
 
-    let addr = "0.0.0.0:3000";
-    let listener = match tokio::net::TcpListener::bind(addr).await {
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3000);
+    let addr = format!("0.0.0.0:{port}");
+    let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(l) => l,
         Err(e) => {
-            tracing::error!("Failed to bind to {addr}: {e} (port already in use?)");
+            tracing::error!("Failed to bind to {addr}: {e} (PORT env var で変更可能)");
             std::process::exit(1);
         }
     };
