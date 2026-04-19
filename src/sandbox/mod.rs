@@ -48,8 +48,8 @@ pub enum RunStatus {
     Ok,
     TimeLimitExceeded,
     RuntimeError,
-    /// シグナルで強制終了（シグナル番号）
-    Killed(i32),
+    /// シグナルで強制終了
+    Killed,
 }
 
 /// ソースコードをコンパイル（またはシンタックスチェック）して実行に必要な情報を返す。

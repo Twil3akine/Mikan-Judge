@@ -137,7 +137,7 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
 
         let case_status = match run.status {
             RunStatus::TimeLimitExceeded => JudgeStatus::TimeLimitExceeded,
-            RunStatus::RuntimeError | RunStatus::Killed(_) => {
+            RunStatus::RuntimeError | RunStatus::Killed => {
                 JudgeStatus::RuntimeError { exit_code: run.exit_code.unwrap_or(-1) }
             }
             RunStatus::Ok => {
