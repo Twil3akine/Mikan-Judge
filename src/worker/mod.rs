@@ -100,10 +100,10 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
     };
 
     let mut final_status = JudgeStatus::Accepted;
-    let mut last_time_ms: Option<u64> = None;
-    let mut last_memory_kb: Option<u64> = None;
-    let mut last_stdout = String::new();
-    let mut last_stderr = String::new();
+    let mut max_time_ms: u64 = 0;
+    let mut max_memory_kb: u64 = 0;
+    let mut first_fail_stdout = String::new();
+    let mut first_fail_stderr = String::new();
     let mut tc_verdicts: Vec<String> = Vec::new();
 
     for (stdin, expected_output) in &job.testcases {
@@ -123,12 +123,14 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
             }
         };
 
-        last_time_ms = Some(run.cpu_time_used.as_millis() as u64);
+        let time_ms = run.cpu_time_used.as_millis() as u64;
         let memory_used_kb = run.memory_used_bytes / 1024;
-        last_memory_kb = Some(memory_used_kb);
-        last_stdout = String::from_utf8_lossy(&run.stdout).into_owned();
+        if time_ms > max_time_ms { max_time_ms = time_ms; }
+        if memory_used_kb > max_memory_kb { max_memory_kb = memory_used_kb; }
+
+        let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
         let runtime_stderr = String::from_utf8_lossy(&run.stderr).into_owned();
-        last_stderr = if compiled.warnings.is_empty() {
+        let stderr = if compiled.warnings.is_empty() {
             runtime_stderr
         } else if runtime_stderr.is_empty() {
             format!("[Compile warnings]\n{}", compiled.warnings)
@@ -163,21 +165,28 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
             JudgeStatus::RuntimeError { .. } => "RE",
             _ => "IE",
         }.to_string());
-        if !matches!(case_status, JudgeStatus::Accepted) {
-            // 残りのケースは未実施 (skipped) として記録
-            let remaining = job.testcases.len() - tc_verdicts.len();
-            tc_verdicts.extend(std::iter::repeat_n("--".to_string(), remaining));
+
+        // 最初の非ACを最終ステータスとして記録し、以降も全ケース実行を継続する
+        if matches!(final_status, JudgeStatus::Accepted) && !matches!(case_status, JudgeStatus::Accepted) {
             final_status = case_status;
-            break;
+            first_fail_stdout = stdout;
+            first_fail_stderr = stderr;
         }
     }
+
+    let (last_stdout, last_stderr) = if matches!(final_status, JudgeStatus::Accepted) {
+        // 全AC: 最後のケースの出力を使う（テストケースが0件の場合は空文字）
+        (String::new(), String::new())
+    } else {
+        (first_fail_stdout, first_fail_stderr)
+    };
 
     if let Err(e) = db_sub::update_result(
         pool,
         job.id,
         &final_status,
-        last_time_ms,
-        last_memory_kb,
+        if max_time_ms > 0 { Some(max_time_ms) } else { None },
+        if max_memory_kb > 0 { Some(max_memory_kb) } else { None },
         Some(&last_stdout),
         Some(&last_stderr),
         Some(&tc_verdicts),
