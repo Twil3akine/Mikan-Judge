@@ -41,21 +41,27 @@
   <h2 style="margin-top:0">テストケース別結果</h2>
   <table>
     <thead>
-      <tr><th>#</th><th>結果</th></tr>
+      <tr><th>#</th><th>結果</th><th>実行時間</th><th>メモリ</th></tr>
     </thead>
     <tbody>
       {% for v in testcase_results %}
       <tr>
         <td>{{ loop.index }}</td>
         <td>
-          {% if v == "AC" %}<span class="badge badge-ac">AC</span>
-          {% elif v == "WA" %}<span class="badge badge-wa">WA</span>
-          {% elif v == "TLE" %}<span class="badge badge-tle">TLE</span>
-          {% elif v == "MLE" %}<span class="badge badge-mle">MLE</span>
-          {% elif v == "RE" %}<span class="badge badge-re">RE</span>
-          {% elif v == "--" %}<span class="badge badge-pending">--</span>
-          {% else %}<span class="badge badge-ce">{{ v }}</span>
+          {% if v.verdict == "AC" %}<span class="badge badge-ac">AC</span>
+          {% elif v.verdict == "WA" %}<span class="badge badge-wa">WA</span>
+          {% elif v.verdict == "TLE" %}<span class="badge badge-tle">TLE</span>
+          {% elif v.verdict == "MLE" %}<span class="badge badge-mle">MLE</span>
+          {% elif v.verdict == "RE" %}<span class="badge badge-re">RE</span>
+          {% elif v.verdict == "--" %}<span class="badge badge-pending">--</span>
+          {% else %}<span class="badge badge-ce">{{ v.verdict }}</span>
           {% endif %}
+        </td>
+        <td style="color:var(--muted);font-size:.875rem">
+          {% if v.time_ms %}{{ v.time_ms }} ms{% else %}-{% endif %}
+        </td>
+        <td style="color:var(--muted);font-size:.875rem">
+          {% if v.memory_kb %}{{ v.memory_kb }} KB{% else %}-{% endif %}
         </td>
       </tr>
       {% endfor %}
