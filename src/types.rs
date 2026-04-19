@@ -153,8 +153,16 @@ pub struct Submission {
     pub memory_used_kb: Option<u64>,
     pub stdout: Option<String>,
     pub stderr: Option<String>,
-    /// 各テストケースの短い verdict 文字列 (例: ["AC", "WA", "TLE"])
-    pub testcase_results: Option<Vec<String>>,
+    /// 各テストケースの判定結果（verdict・実行時間・メモリ）
+    pub testcase_results: Option<Vec<TestcaseVerdict>>,
+}
+
+/// テストケース1件の実行結果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestcaseVerdict {
+    pub verdict: String,
+    pub time_ms: Option<u64>,
+    pub memory_kb: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
