@@ -367,11 +367,19 @@ pub async fn contest_problem_detail(
     let prob = problem::load_one(&state.problems_dir, &problem_id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
 
+    let lang_labels = serde_json::json!({
+        "cpp":    Language::Cpp.display_name_versioned(&state.lang_versions),
+        "rust":   Language::Rust.display_name_versioned(&state.lang_versions),
+        "python": Language::Python.display_name_versioned(&state.lang_versions),
+        "pypy":   Language::PyPy.display_name_versioned(&state.lang_versions),
+    });
+
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
     ctx.insert("contest_title", &contest.title);
     ctx.insert("problem", &prob);
     ctx.insert("problem_label", &label);
+    ctx.insert("lang_labels", &lang_labels);
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     ctx.insert("cooldown_remaining_ms", &query.cooldown_remaining_ms);
     render(&state.tera, "contests/problems/detail.html", ctx)
@@ -850,8 +858,15 @@ pub async fn problems_detail(
 ) -> Result<Html<String>, HtmlError> {
     let prob = problem::load_one(&state.problems_dir, &id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{id}' not found")))?;
+    let lang_labels = serde_json::json!({
+        "cpp":    Language::Cpp.display_name_versioned(&state.lang_versions),
+        "rust":   Language::Rust.display_name_versioned(&state.lang_versions),
+        "python": Language::Python.display_name_versioned(&state.lang_versions),
+        "pypy":   Language::PyPy.display_name_versioned(&state.lang_versions),
+    });
     let mut ctx = Context::new();
     ctx.insert("problem", &prob);
+    ctx.insert("lang_labels", &lang_labels);
     ctx.insert("contest_id", &Option::<String>::None);
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     ctx.insert("cooldown_remaining_ms", &Option::<i64>::None);
