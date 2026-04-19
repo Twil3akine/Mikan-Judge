@@ -25,8 +25,8 @@ pub struct AppState {
 
 pub async fn create_router(state: AppState) -> Router {
     // PostgreSQL-backed session store — sessions survive server restarts
+    // tower_sessions テーブルは migrations/004_create_sessions.sql で作成済み
     let session_store = PgSessionStore::new((*state.pool).clone());
-    session_store.migrate().await.expect("Failed to create session table");
     let session_layer = SessionManagerLayer::new(session_store)
         .with_secure(false)
         .with_same_site(SameSite::Lax);

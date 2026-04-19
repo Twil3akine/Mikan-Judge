@@ -61,7 +61,7 @@ src/
 - セッションは **tower-sessions 0.15** + 自前の `PgSessionStore`（`src/session_store.rs`）
   - `tower-sessions-sqlx-store` は tower-sessions 0.15 と `tower_sessions_core` のバージョンが食い違うため使用不可
   - セッションデータは `tower_sessions` テーブル（id TEXT, data TEXT JSON, expiry_unix BIGINT）に保存
-  - `store.migrate()` はアプリ起動時に `create_router()` 内で呼ばれる
+  - テーブルは `migrations/004_create_sessions.sql` で作成される（`store.migrate()` は不使用）
 - セッションに保存するのは `user_id: Uuid` のみ。各リクエストで `find_by_id` でユーザ名を引く
 - `current_username(session, pool) -> Option<String>` ヘルパーが全 HTML ハンドラで使われる
 - 未ログインでの提出は許可（`user_id = NULL`）
@@ -95,8 +95,9 @@ src/
 - `CompileOutput { executable, run_args, error, warnings }`
   - インタープリタ言語: `executable = /path/to/python3`, `run_args = [source_path]`
 - `run_in_sandbox(executable, run_args, stdin, config) -> Result<RunResult>`
-- `RunResult { stdout, stderr, status, time_used, cpu_time_used }`
+- `RunResult { stdout, stderr, exit_code, cpu_time_used, memory_used_bytes, status }`
   - `cpu_time_used`: `wait4(pid, &rusage)` から ru_utime + ru_stime で計測（RUSAGE_CHILDREN は累積するため使わない）
+  - `memory_used_bytes`: `ru_maxrss` から取得（macOS は bytes、Linux は KB 単位）
 - `SandboxConfig`
   - `vm_limit_bytes: Option<u64>` — インタープリタ言語は `None`（Python は起動時に大量のVASを使う）
   - Linux のみ: `unshare(CLONE_NEWNET)` + seccomp フィルタ
@@ -106,6 +107,7 @@ src/
 - `JudgeJob.testcases: Vec<(String, String)>` — 全テストケース（input, expected）
 - 全ケースを順にジャッジし `tc_verdicts: Vec<String>` に "AC"/"WA"/"TLE"/"MLE"/"RE" を収集
 - 最初の非 AC で残りは "--" で埋める
+- MLE 判定: `RunStatus::Killed | RuntimeError` かつ `memory_used_bytes / 1024 > memory_limit_kb` のとき `JudgeStatus::MemoryLimitExceeded`（RLIMIT_AS 超過はシグナルで kill されるため、メモリ使用量で事後判定する）
 - CE時: `update_result(..., stderr=Some(compile_error_message))`
 - コンパイル警告+実行stderr: `[Compile warnings]\n<warnings>\n\n<stderr>` の形式で結合
 
@@ -138,11 +140,37 @@ problems/<id>/
 
 ## Development Environment
 
-- Nix flakes + direnv
-- `dev` コマンド: `pg_start → db-migrate → cargo watch -x run`
-- `pg_start` / `pg_stop` / `db-migrate` は `flake.nix` の `writeShellScriptBin` で定義
+- Nix flakes + direnv + Docker（OrbStack / Docker Desktop）
+- `dev` コマンド: `docker compose up -d db → db-migrate → cargo watch -x run`
+  - 終了時（Ctrl+C）に `docker compose stop db` を自動実行
+  - OrbStack / Docker Desktop の `docker` を `/usr/local/bin` 経由で使用（pkgs.docker は不使用）
+- `db-migrate`: `sqlx migrate run` を実行（DATABASE_URL は shellHook で自動設定済み）
 - Python: `pkgs.python3` (CPython), `pkgs.pypy3` (PyPy) が buildInputs に含まれる
-- macOS では dyld/ObjC ランタイムの起動コストにより実行時間が大きく見える（C++でも~50ms）。正確な計測はLinux（Docker等）が必要。
+- macOS では dyld/ObjC ランタイムの起動コストにより実行時間が大きく見える（C++でも~50ms）。正確な計測は Linux（本番 Docker 等）が必要。
+
+### データの永続性
+- PostgreSQL データは Docker ボリューム `mikan-judge_postgres_data` に保存
+- `docker compose down`（`-v` なし）ではボリュームは消えない
+- `docker compose down -v` のみボリュームが削除される（実行しないこと）
+- 別 PC への移行はボリュームのエクスポート/インポートが必要（通常は新規 DB で構わない）
+
+### デプロイ（Hetzner 等の Linux サーバ）
+```bash
+# 初回
+cp .env.example .env   # POSTGRES_PASSWORD を変更
+docker compose up --build -d
+
+# コード更新時（データは保持される）
+git pull
+docker compose up --build -d
+```
+
+### Nix パッケージ出力
+- `nix build .#default` — バイナリをビルド（macOS / Linux 共通）
+- `nix build .#dockerImage` — Docker イメージを生成（**Linux のみ**）
+  ```bash
+  nix build .#dockerImage && docker load < result
+  ```
 
 ## Database
 

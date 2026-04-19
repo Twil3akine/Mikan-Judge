@@ -124,7 +124,8 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
         };
 
         last_time_ms = Some(run.cpu_time_used.as_millis() as u64);
-        last_memory_kb = Some(run.memory_used_bytes / 1024);
+        let memory_used_kb = run.memory_used_bytes / 1024;
+        last_memory_kb = Some(memory_used_kb);
         last_stdout = String::from_utf8_lossy(&run.stdout).into_owned();
         let runtime_stderr = String::from_utf8_lossy(&run.stderr).into_owned();
         last_stderr = if compiled.warnings.is_empty() {
@@ -138,7 +139,12 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
         let case_status = match run.status {
             RunStatus::TimeLimitExceeded => JudgeStatus::TimeLimitExceeded,
             RunStatus::RuntimeError | RunStatus::Killed => {
-                JudgeStatus::RuntimeError { exit_code: run.exit_code.unwrap_or(-1) }
+                // RLIMIT_AS 超過で kill された場合はメモリ使用量で MLE を判定する
+                if memory_used_kb > job.memory_limit_kb {
+                    JudgeStatus::MemoryLimitExceeded
+                } else {
+                    JudgeStatus::RuntimeError { exit_code: run.exit_code.unwrap_or(-1) }
+                }
             }
             RunStatus::Ok => {
                 if String::from_utf8_lossy(&run.stdout).trim() == expected_output.trim() {

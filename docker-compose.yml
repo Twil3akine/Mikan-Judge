@@ -1,0 +1,49 @@
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB:       mikan_judge
+      POSTGRES_USER:     mikan
+      # 本番: .env に POSTGRES_PASSWORD を設定すること
+      # 開発: nix devShell の dev コマンドが POSTGRES_PASSWORD を自動エクスポートする
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      # ホストから直接接続できるように公開（nix devShell の cargo watch 用）
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mikan -d mikan_judge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── judge アプリ ────────────────────────────────────────────
+  judge:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgres://mikan:${POSTGRES_PASSWORD}@db/mikan_judge
+      RUST_LOG:     ${RUST_LOG:-info}
+    volumes:
+      # 問題ファイルはリポジトリの problems/ をそのままマウント
+      - ./problems:/app/problems
+    depends_on:
+      db:
+        condition: service_healthy
+    # ── sandbox に必要な Linux ケーパビリティ ──────────────────
+    # CLONE_NEWNET（提出コードのネットワーク遮断）に NET_ADMIN が必要。
+    # judge 自身の seccomp フィルタを有効にするため Docker の
+    # デフォルト seccomp プロファイルを無効化する。
+    cap_add:
+      - NET_ADMIN
+    security_opt:
+      - seccomp:unconfined
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
