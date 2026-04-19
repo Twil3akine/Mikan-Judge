@@ -15,20 +15,6 @@ impl PgSessionStore {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
-
-    /// Create the sessions table if it doesn't exist (run at startup).
-    pub async fn migrate(&self) -> anyhow::Result<()> {
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS tower_sessions (
-                id          TEXT   PRIMARY KEY,
-                data        TEXT   NOT NULL,
-                expiry_unix BIGINT NOT NULL
-            )",
-        )
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
 }
 
 fn enc(e: impl std::fmt::Display) -> session_store::Error {
