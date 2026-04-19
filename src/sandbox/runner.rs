@@ -264,7 +264,6 @@ fn parent_collect(
         stdout,
         stderr,
         exit_code,
-        time_used,
         cpu_time_used,
         memory_used_bytes,
         status,
