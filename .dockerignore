@@ -1,0 +1,10 @@
+.git
+.pg
+.direnv
+.claude
+target
+*.md
+flake.lock
+.env
+.env.local
+problems
