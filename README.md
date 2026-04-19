@@ -5,7 +5,7 @@
 ## 機能
 
 - C++17 / Rust / Python3 (CPython) / Python3 (PyPy) での提出・ジャッジ
-- 全テストケースをジャッジし、ケースごとの AC/WA/TLE/MLE/RE を表示
+- 全テストケースをジャッジし、ケースごとの AC/WA/TLE/RE を表示
 - fork + exec サンドボックス（rlimit / ネームスペース分離 / seccomp on Linux）
 - htmx によるリアルタイム結果ポーリング
 - KaTeX による数式レンダリング
@@ -23,34 +23,70 @@
 |---|---|
 | Web フレームワーク | axum 0.8 |
 | テンプレートエンジン | Tera |
-| DB | PostgreSQL (sqlx 0.8) |
+| DB | PostgreSQL 16（Docker コンテナ） |
 | 認証 | argon2 0.5 + tower-sessions 0.15 |
 | サンドボックス | fork/exec + libc rlimit + seccomp (Linux) |
 | フロントエンド | htmx / KaTeX / highlight.js / CodeMirror 5 |
-| 開発環境 | Nix flakes + direnv |
+| 開発環境 | Nix flakes + direnv + Docker |
 
-## セットアップ
+## セットアップ（開発）
 
 ### 前提条件
 
 - [Nix](https://nixos.org/download)（flakes 有効）
 - [direnv](https://direnv.net/)
+- [OrbStack](https://orbstack.dev/) または Docker Desktop（PostgreSQL の起動に使用）
 
 ### 起動
 
 ```bash
-direnv allow   # 初回のみ。PostgreSQL の初期化も行われる
-dev            # PostgreSQL 起動 → マイグレーション → cargo watch -x run
+direnv allow   # 初回のみ
+dev            # Docker で PostgreSQL 起動 → マイグレーション → cargo watch
 ```
 
-サーバは `http://localhost:3000` で起動します。停止は `Ctrl+C`。
+サーバは `http://localhost:3000` で起動します。停止は `Ctrl+C`（PostgreSQL コンテナも自動停止）。
 
 ### 個別コマンド
 
 ```bash
-pg_start    # PostgreSQL 起動
-pg_stop     # PostgreSQL 停止
-db-migrate  # マイグレーション実行
+db-migrate     # マイグレーション実行（DB 起動中に使用）
+```
+
+### データの扱い
+
+PostgreSQL のデータは Docker ボリューム `mikan-judge_postgres_data` に保存されます。
+
+| 操作 | データ |
+|---|---|
+| `dev` を止める（Ctrl+C） | **残る** |
+| `docker compose down` | **残る** |
+| `docker compose down -v` | **消える**（明示的なボリューム削除） |
+
+## デプロイ（本番 / Hetzner 等）
+
+### 初回
+
+```bash
+git clone <repo>
+cd mikan-judge
+cp .env.example .env
+# .env の POSTGRES_PASSWORD を変更する
+docker compose up --build -d
+```
+
+### コード更新時
+
+```bash
+git pull
+docker compose up --build -d
+```
+
+ボリューム（`-v` なし）はそのままなので、**提出データ・ユーザデータは保持されます。**
+
+### ⚠ データが消えるコマンド
+
+```bash
+docker compose down -v   # 実行しないこと（ボリュームごと削除）
 ```
 
 ## 問題の追加
@@ -132,6 +168,9 @@ problems/                # 問題ファイル（Git 管理）
 migrations/              # sqlx マイグレーション
 static/
 └── style.css
+Dockerfile               # multi-stage ビルド（本番イメージ）
+docker-compose.yml       # judge + PostgreSQL
+.env.example             # 環境変数テンプレート
 ```
 
 ## URL 構成
