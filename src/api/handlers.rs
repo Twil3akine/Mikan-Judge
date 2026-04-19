@@ -525,7 +525,7 @@ pub async fn contest_submissions_index(
                 problem_label,
                 problem_title,
                 username: s.username.clone(),
-                language: Language::from_db(&s.language).display_name().to_string(),
+                language: Language::from_db(&s.language).display_name_versioned(&state.lang_versions),
                 verdict,
                 badge_class,
                 time_used_ms: s.time_used_ms.map(|v| v as u64),
@@ -605,7 +605,7 @@ pub async fn contest_submission_detail(
     ctx.insert("problem_id", &sub.problem_id);
     ctx.insert("problem_title", &problem_title);
     ctx.insert("problem_label", &problem_label);
-    ctx.insert("language", &sub.language.display_name());
+    ctx.insert("language", &sub.language.display_name_versioned(&state.lang_versions));
     ctx.insert("lang_hljs", lang_hljs);
     ctx.insert("source_code", &sub.source_code);
     ctx.insert("verdict", verdict);
@@ -944,7 +944,7 @@ pub async fn submissions_index(
                 problem_label: String::new(),
                 problem_title,
                 username: s.username.clone(),
-                language: Language::from_db(&s.language).display_name().to_string(),
+                language: Language::from_db(&s.language).display_name_versioned(&state.lang_versions),
                 verdict,
                 badge_class,
                 time_used_ms: s.time_used_ms.map(|v| v as u64),
@@ -989,7 +989,7 @@ pub async fn submissions_detail(
     ctx.insert("id", &sub.id.to_string());
     ctx.insert("problem_id", &sub.problem_id);
     ctx.insert("problem_title", &problem_title);
-    ctx.insert("language", &sub.language.display_name());
+    ctx.insert("language", &sub.language.display_name_versioned(&state.lang_versions));
     ctx.insert("lang_hljs", lang_hljs);
     ctx.insert("source_code", &sub.source_code);
     ctx.insert("verdict", verdict);
