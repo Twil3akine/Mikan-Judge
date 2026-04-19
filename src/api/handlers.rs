@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 use axum::{
     extract::{Form, Path, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse, Json, Redirect, Response},
 };
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tera::Context;
@@ -88,6 +90,53 @@ fn build_pagination(current: i64, total: i64) -> Vec<i64> {
     if right < total - 1 { items.push(0); } // 省略記号
     items.push(total);
     items
+}
+
+/// コンテスト一覧の表示用アイテム
+#[derive(Serialize)]
+struct ContestItem {
+    id: String,
+    title: String,
+    description: String,
+    start_time: String,
+    end_time: String,
+    status_label: &'static str,
+    status_class: &'static str,
+}
+
+fn to_contest_item(c: &crate::types::Contest) -> ContestItem {
+    let st = c.status();
+    ContestItem {
+        id: c.id.clone(),
+        title: c.title.clone(),
+        description: c.description.clone(),
+        start_time: c.start_time.format("%Y/%m/%d %H:%M").to_string(),
+        end_time: c.end_time.format("%Y/%m/%d %H:%M").to_string(),
+        status_label: st.label(),
+        status_class: st.badge_class(),
+    }
+}
+
+/// 言語バージョン付きセレクトラベルの JSON を構築する
+fn build_lang_labels(versions: &crate::types::LanguageVersions) -> serde_json::Value {
+    serde_json::json!({
+        "cpp":    Language::Cpp.display_name_versioned(versions),
+        "rust":   Language::Rust.display_name_versioned(versions),
+        "python": Language::Python.display_name_versioned(versions),
+        "pypy":   Language::PyPy.display_name_versioned(versions),
+    })
+}
+
+/// testcase_results の JSON 文字列から "AC/N" 形式のサマリを生成する。
+/// 新形式 (`[{verdict,time_ms,memory_kb}]`) と旧形式 (`["AC","WA"]`) の両方に対応する。
+fn tc_summary_from_json(json_str: &str) -> Option<String> {
+    let verdicts: Vec<String> = if let Ok(v) = serde_json::from_str::<Vec<TestcaseVerdict>>(json_str) {
+        v.into_iter().map(|tv| tv.verdict).collect()
+    } else {
+        serde_json::from_str::<Vec<String>>(json_str).ok()?
+    };
+    let ac = verdicts.iter().filter(|s| s.as_str() == "AC").count();
+    Some(format!("{ac}/{}", verdicts.len()))
 }
 
 /// 提出クールダウンをチェックし、残りミリ秒を返す（0 なら OK）
@@ -213,33 +262,8 @@ pub async fn index(
     session: Session,
 ) -> Result<Html<String>, HtmlError> {
     let lists = db_contest::list_grouped(&state.pool).await?;
-
-    #[derive(Serialize)]
-    struct ContestItem {
-        id: String,
-        title: String,
-        description: String,
-        start_time: String,
-        end_time: String,
-        status_label: &'static str,
-        status_class: &'static str,
-    }
-
-    fn to_item(c: &crate::types::Contest) -> ContestItem {
-        let st = c.status();
-        ContestItem {
-            id: c.id.clone(),
-            title: c.title.clone(),
-            description: c.description.clone(),
-            start_time: c.start_time.format("%Y/%m/%d %H:%M").to_string(),
-            end_time: c.end_time.format("%Y/%m/%d %H:%M").to_string(),
-            status_label: st.label(),
-            status_class: st.badge_class(),
-        }
-    }
-
     let mut ctx = Context::new();
-    ctx.insert("ongoing", &lists.ongoing.iter().map(to_item).collect::<Vec<_>>());
+    ctx.insert("ongoing", &lists.ongoing.iter().map(to_contest_item).collect::<Vec<_>>());
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     ctx.insert("contest_id", &Option::<String>::None);
     render(&state.tera, "index.html", ctx)
@@ -252,35 +276,10 @@ pub async fn contests_index(
     session: Session,
 ) -> Result<Html<String>, HtmlError> {
     let lists = db_contest::list_grouped(&state.pool).await?;
-
-    #[derive(Serialize)]
-    struct ContestItem {
-        id: String,
-        title: String,
-        description: String,
-        start_time: String,
-        end_time: String,
-        status_label: &'static str,
-        status_class: &'static str,
-    }
-
-    fn to_item(c: &crate::types::Contest) -> ContestItem {
-        let st = c.status();
-        ContestItem {
-            id: c.id.clone(),
-            title: c.title.clone(),
-            description: c.description.clone(),
-            start_time: c.start_time.format("%Y/%m/%d %H:%M").to_string(),
-            end_time: c.end_time.format("%Y/%m/%d %H:%M").to_string(),
-            status_label: st.label(),
-            status_class: st.badge_class(),
-        }
-    }
-
     let mut ctx = Context::new();
-    ctx.insert("ongoing",  &lists.ongoing.iter().map(to_item).collect::<Vec<_>>());
-    ctx.insert("upcoming", &lists.upcoming.iter().map(to_item).collect::<Vec<_>>());
-    ctx.insert("past",     &lists.past.iter().map(to_item).collect::<Vec<_>>());
+    ctx.insert("ongoing",  &lists.ongoing.iter().map(to_contest_item).collect::<Vec<_>>());
+    ctx.insert("upcoming", &lists.upcoming.iter().map(to_contest_item).collect::<Vec<_>>());
+    ctx.insert("past",     &lists.past.iter().map(to_contest_item).collect::<Vec<_>>());
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     ctx.insert("contest_id", &Option::<String>::None);
     render(&state.tera, "contests/list.html", ctx)
@@ -367,19 +366,12 @@ pub async fn contest_problem_detail(
     let prob = problem::load_one(&state.problems_dir, &problem_id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
 
-    let lang_labels = serde_json::json!({
-        "cpp":    Language::Cpp.display_name_versioned(&state.lang_versions),
-        "rust":   Language::Rust.display_name_versioned(&state.lang_versions),
-        "python": Language::Python.display_name_versioned(&state.lang_versions),
-        "pypy":   Language::PyPy.display_name_versioned(&state.lang_versions),
-    });
-
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
     ctx.insert("contest_title", &contest.title);
     ctx.insert("problem", &prob);
     ctx.insert("problem_label", &label);
-    ctx.insert("lang_labels", &lang_labels);
+    ctx.insert("lang_labels", &build_lang_labels(&state.lang_versions));
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     ctx.insert("cooldown_remaining_ms", &query.cooldown_remaining_ms);
     render(&state.tera, "contests/problems/detail.html", ctx)
@@ -417,12 +409,7 @@ pub async fn contest_problem_submit(
     let prob = problem::load_one(&state.problems_dir, &problem_id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
 
-    let language = match form.language.as_str() {
-        "rust" => Language::Rust,
-        "python" => Language::Python,
-        "pypy" => Language::PyPy,
-        _ => Language::Cpp,
-    };
+    let language = Language::from_db(&form.language);
 
     let id = Uuid::new_v4();
     let sub = Submission {
@@ -524,12 +511,6 @@ pub async fn contest_submissions_index(
                 .copied()
                 .unwrap_or(&s.problem_id)
                 .to_string();
-            let tc_verdicts: Option<Vec<String>> = s.testcase_results.as_deref().and_then(|j| {
-                if let Ok(v) = serde_json::from_str::<Vec<TestcaseVerdict>>(j) {
-                    return Some(v.into_iter().map(|tv| tv.verdict).collect());
-                }
-                serde_json::from_str::<Vec<String>>(j).ok()
-            });
             SubmissionListItem {
                 id: s.id.to_string(),
                 problem_id: s.problem_id.clone(),
@@ -541,10 +522,7 @@ pub async fn contest_submissions_index(
                 badge_class,
                 time_used_ms: s.time_used_ms.map(|v| v as u64),
                 memory_used_kb: s.memory_used_kb.map(|v| v as u64),
-                tc_summary: tc_verdicts.map(|v| {
-                    let ac = v.iter().filter(|s| s.as_str() == "AC").count();
-                    format!("{ac}/{}", v.len())
-                }),
+                tc_summary: s.testcase_results.as_deref().and_then(tc_summary_from_json),
             }
         })
         .collect();
@@ -676,13 +654,7 @@ pub async fn contest_standings(
 
     let first_acs = db_sub::first_acs_for_contest(&state.pool, &contest_id).await?;
 
-    // ユーザごとに集計
-    // key: user_id
-    use std::collections::HashMap;
-    use uuid::Uuid;
-    use chrono::DateTime;
-    use chrono::Utc;
-
+    // ユーザごとに集計 (key: user_id)
     struct UserData {
         username: String,
         solved: HashMap<String, DateTime<Utc>>, // problem_id -> first_ac_at
@@ -861,15 +833,9 @@ pub async fn problems_detail(
 ) -> Result<Html<String>, HtmlError> {
     let prob = problem::load_one(&state.problems_dir, &id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{id}' not found")))?;
-    let lang_labels = serde_json::json!({
-        "cpp":    Language::Cpp.display_name_versioned(&state.lang_versions),
-        "rust":   Language::Rust.display_name_versioned(&state.lang_versions),
-        "python": Language::Python.display_name_versioned(&state.lang_versions),
-        "pypy":   Language::PyPy.display_name_versioned(&state.lang_versions),
-    });
     let mut ctx = Context::new();
     ctx.insert("problem", &prob);
-    ctx.insert("lang_labels", &lang_labels);
+    ctx.insert("lang_labels", &build_lang_labels(&state.lang_versions));
     ctx.insert("contest_id", &Option::<String>::None);
     ctx.insert("current_user", &current_username(&session, &state.pool).await);
     ctx.insert("cooldown_remaining_ms", &Option::<i64>::None);
@@ -890,12 +856,7 @@ pub async fn problems_submit(
     let prob = problem::load_one(&state.problems_dir, &problem_id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
 
-    let language = match form.language.as_str() {
-        "rust" => Language::Rust,
-        "python" => Language::Python,
-        "pypy" => Language::PyPy,
-        _ => Language::Cpp,
-    };
+    let language = Language::from_db(&form.language);
 
     let id = Uuid::new_v4();
     let sub = Submission {
@@ -953,9 +914,6 @@ pub async fn submissions_index(
                 .copied()
                 .unwrap_or(&s.problem_id)
                 .to_string();
-            let tc_results: Option<Vec<String>> = s.testcase_results
-                .as_deref()
-                .and_then(|j| serde_json::from_str(j).ok());
             SubmissionListItem {
                 id: s.id.to_string(),
                 problem_id: s.problem_id.clone(),
@@ -967,10 +925,7 @@ pub async fn submissions_index(
                 badge_class,
                 time_used_ms: s.time_used_ms.map(|v| v as u64),
                 memory_used_kb: s.memory_used_kb.map(|v| v as u64),
-                tc_summary: tc_results.map(|v| {
-                    let ac = v.iter().filter(|s| s.as_str() == "AC").count();
-                    format!("{ac}/{}", v.len())
-                }),
+                tc_summary: s.testcase_results.as_deref().and_then(tc_summary_from_json),
             }
         })
         .collect();
