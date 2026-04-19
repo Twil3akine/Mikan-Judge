@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::types::{JudgeStatus, Language, Submission};
+use crate::types::{JudgeStatus, Language, Submission, TestcaseVerdict};
 
 /// 単一提出取得用（user_id のみ保持）
 #[derive(Debug, sqlx::FromRow)]
@@ -25,9 +25,15 @@ struct SubmissionRow {
 impl SubmissionRow {
     fn into_submission(self) -> Submission {
         let status = JudgeStatus::from_db(&self.status);
-        let testcase_results = self
-            .testcase_results
-            .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok());
+        let testcase_results = self.testcase_results.and_then(|s| {
+            // 新形式 [{verdict,time_ms,memory_kb},...] を試み、失敗したら旧形式 ["AC",...] にフォールバック
+            if let Ok(v) = serde_json::from_str::<Vec<TestcaseVerdict>>(&s) {
+                return Some(v);
+            }
+            serde_json::from_str::<Vec<String>>(&s).ok().map(|strings| {
+                strings.into_iter().map(|v| TestcaseVerdict { verdict: v, time_ms: None, memory_kb: None }).collect()
+            })
+        });
         Submission {
             id: self.id,
             user_id: self.user_id,
@@ -95,7 +101,7 @@ pub async fn update_result(
     memory_used_kb: Option<u64>,
     stdout: Option<&str>,
     stderr: Option<&str>,
-    testcase_results: Option<&[String]>,
+    testcase_results: Option<&[TestcaseVerdict]>,
 ) -> Result<()> {
     let tc_json = testcase_results.map(|v| serde_json::to_string(v).unwrap_or_default());
     sqlx::query(

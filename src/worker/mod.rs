@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::db::submission as db_sub;
 use crate::sandbox::{self, RunStatus, SandboxConfig};
-use crate::types::{JudgeStatus, Language, Submission};
+use crate::types::{JudgeStatus, Language, Submission, TestcaseVerdict};
 
 /// ジャッジキューに積むジョブ
 #[derive(Debug)]
@@ -104,7 +104,7 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
     let mut max_memory_kb: u64 = 0;
     let mut first_fail_stdout = String::new();
     let mut first_fail_stderr = String::new();
-    let mut tc_verdicts: Vec<String> = Vec::new();
+    let mut tc_verdicts: Vec<TestcaseVerdict> = Vec::new();
 
     for (stdin, expected_output) in &job.testcases {
         let run = match sandbox::run_in_sandbox(
@@ -157,14 +157,18 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
             }
         };
 
-        tc_verdicts.push(match &case_status {
-            JudgeStatus::Accepted => "AC",
-            JudgeStatus::WrongAnswer => "WA",
-            JudgeStatus::TimeLimitExceeded => "TLE",
-            JudgeStatus::MemoryLimitExceeded => "MLE",
-            JudgeStatus::RuntimeError { .. } => "RE",
-            _ => "IE",
-        }.to_string());
+        tc_verdicts.push(TestcaseVerdict {
+            verdict: match &case_status {
+                JudgeStatus::Accepted => "AC",
+                JudgeStatus::WrongAnswer => "WA",
+                JudgeStatus::TimeLimitExceeded => "TLE",
+                JudgeStatus::MemoryLimitExceeded => "MLE",
+                JudgeStatus::RuntimeError { .. } => "RE",
+                _ => "IE",
+            }.to_string(),
+            time_ms: Some(time_ms),
+            memory_kb: Some(memory_used_kb),
+        });
 
         // 最初の非ACを最終ステータスとして記録し、以降も全ケース実行を継続する
         if matches!(final_status, JudgeStatus::Accepted) && !matches!(case_status, JudgeStatus::Accepted) {

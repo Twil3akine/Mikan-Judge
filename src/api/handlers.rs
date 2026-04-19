@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::db::{contest as db_contest, submission as db_sub, user as db_user};
 use crate::problem;
-use crate::types::{JudgeStatus, Language, Submission, SubmitRequest};
+use crate::types::{JudgeStatus, Language, Submission, SubmitRequest, TestcaseVerdict};
 use crate::worker::{create_submission, JudgeJob};
 
 use super::AppState;
@@ -516,9 +516,12 @@ pub async fn contest_submissions_index(
                 .copied()
                 .unwrap_or(&s.problem_id)
                 .to_string();
-            let tc_results: Option<Vec<String>> = s.testcase_results
-                .as_deref()
-                .and_then(|j| serde_json::from_str(j).ok());
+            let tc_verdicts: Option<Vec<String>> = s.testcase_results.as_deref().and_then(|j| {
+                if let Ok(v) = serde_json::from_str::<Vec<TestcaseVerdict>>(j) {
+                    return Some(v.into_iter().map(|tv| tv.verdict).collect());
+                }
+                serde_json::from_str::<Vec<String>>(j).ok()
+            });
             SubmissionListItem {
                 id: s.id.to_string(),
                 problem_id: s.problem_id.clone(),
@@ -530,7 +533,7 @@ pub async fn contest_submissions_index(
                 badge_class,
                 time_used_ms: s.time_used_ms.map(|v| v as u64),
                 memory_used_kb: s.memory_used_kb.map(|v| v as u64),
-                tc_summary: tc_results.map(|v| {
+                tc_summary: tc_verdicts.map(|v| {
                     let ac = v.iter().filter(|s| s.as_str() == "AC").count();
                     format!("{ac}/{}", v.len())
                 }),
