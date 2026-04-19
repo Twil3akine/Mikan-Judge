@@ -1,5 +1,4 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -10,8 +9,6 @@ struct UserRow {
     id: Uuid,
     username: String,
     password_hash: String,
-    #[allow(dead_code)]
-    created_at: DateTime<Utc>,
 }
 
 impl UserRow {
@@ -24,7 +21,7 @@ pub async fn insert(pool: &PgPool, username: &str, password_hash: &str) -> Resul
     let row = sqlx::query_as::<_, UserRow>(
         "INSERT INTO users (username, password_hash)
          VALUES ($1, $2)
-         RETURNING id, username, password_hash, created_at",
+         RETURNING id, username, password_hash",
     )
     .bind(username)
     .bind(password_hash)
@@ -35,7 +32,7 @@ pub async fn insert(pool: &PgPool, username: &str, password_hash: &str) -> Resul
 
 pub async fn find_by_username(pool: &PgPool, username: &str) -> Result<Option<User>> {
     let row = sqlx::query_as::<_, UserRow>(
-        "SELECT id, username, password_hash, created_at FROM users WHERE username = $1",
+        "SELECT id, username, password_hash FROM users WHERE username = $1",
     )
     .bind(username)
     .fetch_optional(pool)
@@ -45,7 +42,7 @@ pub async fn find_by_username(pool: &PgPool, username: &str) -> Result<Option<Us
 
 pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<User>> {
     let row = sqlx::query_as::<_, UserRow>(
-        "SELECT id, username, password_hash, created_at FROM users WHERE id = $1",
+        "SELECT id, username, password_hash FROM users WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)

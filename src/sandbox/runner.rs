@@ -264,7 +264,6 @@ fn parent_collect(
         stdout,
         stderr,
         exit_code,
-        time_used,
         cpu_time_used,
         memory_used_bytes,
         status,
@@ -290,11 +289,11 @@ fn determine_status(
             }
         }
         Some(WaitStatus::Signaled(_, sig, _)) => {
-            // SIGXCPU = RLIMIT_CPU 超過 → TLE
             if sig == Signal::SIGXCPU {
+                // RLIMIT_CPU 超過 → TLE
                 (None, RunStatus::TimeLimitExceeded)
             } else {
-                (None, RunStatus::Killed(sig as i32))
+                (None, RunStatus::Killed)
             }
         }
         _ => (None, RunStatus::RuntimeError),

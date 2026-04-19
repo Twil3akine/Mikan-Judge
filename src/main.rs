@@ -42,7 +42,13 @@ async fn main() {
     let app = api::create_router(state).await;
 
     let addr = "0.0.0.0:3000";
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!("Failed to bind to {addr}: {e} (port already in use?)");
+            std::process::exit(1);
+        }
+    };
     tracing::info!("Listening on {addr}");
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }

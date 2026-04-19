@@ -45,18 +45,6 @@ pub async fn get_by_id(pool: &PgPool, contest_id: &str) -> Result<Option<Contest
     Ok(row.map(|r| r.into_contest()))
 }
 
-/// コンテストに紐付く problem_id のリストを返す（display_order 順）
-pub async fn problem_ids(pool: &PgPool, contest_id: &str) -> Result<Vec<(String, String)>> {
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT label, problem_id FROM contest_problems
-         WHERE contest_id = $1 ORDER BY display_order",
-    )
-    .bind(contest_id)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows)
-}
-
 pub async fn problems_for_contest(
     pool: &PgPool,
     contest_id: &str,

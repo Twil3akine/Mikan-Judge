@@ -20,8 +20,6 @@ struct SubmissionRow {
     stdout: Option<String>,
     stderr: Option<String>,
     testcase_results: Option<String>,
-    #[allow(dead_code)]
-    created_at: DateTime<Utc>,
 }
 
 impl SubmissionRow {
@@ -51,8 +49,6 @@ impl SubmissionRow {
 #[derive(Debug, sqlx::FromRow)]
 pub struct SubmissionListRow {
     pub id: Uuid,
-    #[allow(dead_code)]
-    pub user_id: Option<Uuid>,
     pub username: Option<String>,
     pub problem_id: String,
     pub language: String,
@@ -60,7 +56,6 @@ pub struct SubmissionListRow {
     pub time_used_ms: Option<i64>,
     pub memory_used_kb: Option<i64>,
     pub testcase_results: Option<String>,
-    pub created_at: DateTime<Utc>,
 }
 
 pub async fn insert(pool: &PgPool, sub: &Submission) -> Result<()> {
@@ -83,7 +78,7 @@ pub async fn insert(pool: &PgPool, sub: &Submission) -> Result<()> {
 pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Submission>> {
     let row = sqlx::query_as::<_, SubmissionRow>(
         "SELECT id, user_id, contest_id, problem_id, language, source_code, status,
-                time_used_ms, memory_used_kb, stdout, stderr, testcase_results, created_at
+                time_used_ms, memory_used_kb, stdout, stderr, testcase_results
          FROM submissions WHERE id = $1",
     )
     .bind(id)
@@ -123,8 +118,8 @@ pub async fn update_result(
 
 pub async fn list_recent(pool: &PgPool, limit: i64) -> Result<Vec<SubmissionListRow>> {
     let rows = sqlx::query_as::<_, SubmissionListRow>(
-        "SELECT s.id, s.user_id, u.username, s.problem_id, s.language, s.status,
-                s.time_used_ms, s.memory_used_kb, s.testcase_results, s.created_at
+        "SELECT s.id, u.username, s.problem_id, s.language, s.status,
+                s.time_used_ms, s.memory_used_kb, s.testcase_results
          FROM submissions s
          LEFT JOIN users u ON s.user_id = u.id
          ORDER BY s.created_at DESC LIMIT $1",
@@ -144,8 +139,8 @@ pub async fn list_for_contest(
 ) -> Result<Vec<SubmissionListRow>> {
     let offset = (page - 1) * per_page;
     let rows = sqlx::query_as::<_, SubmissionListRow>(
-        "SELECT s.id, s.user_id, u.username, s.problem_id, s.language, s.status,
-                s.time_used_ms, s.memory_used_kb, s.testcase_results, s.created_at
+        "SELECT s.id, u.username, s.problem_id, s.language, s.status,
+                s.time_used_ms, s.memory_used_kb, s.testcase_results
          FROM submissions s
          LEFT JOIN users u ON s.user_id = u.id
          WHERE s.contest_id = $1

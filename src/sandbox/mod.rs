@@ -32,13 +32,10 @@ pub struct CompileOutput {
 
 /// サンドボックス内実行の結果
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct RunResult {
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
     pub exit_code: Option<i32>,
-    /// 壁時計時間（TLE 判定に使用）
-    pub time_used: Duration,
     /// ru_utime + ru_stime（表示用、スケジューラ揺れを含まない）
     pub cpu_time_used: Duration,
     /// getrusage(RUSAGE_CHILDREN).max_rss から取得（バイト単位）
@@ -47,14 +44,12 @@ pub struct RunResult {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum RunStatus {
     Ok,
     TimeLimitExceeded,
-    MemoryLimitExceeded,
     RuntimeError,
-    /// シグナルで強制終了（シグナル番号）
-    Killed(i32),
+    /// シグナルで強制終了
+    Killed,
 }
 
 /// ソースコードをコンパイル（またはシンタックスチェック）して実行に必要な情報を返す。
