@@ -38,15 +38,6 @@ impl Language {
         }
     }
 
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            Language::Cpp => "C++17",
-            Language::Rust => "Rust",
-            Language::Python => "Python (CPython)",
-            Language::PyPy => "Python (PyPy)",
-        }
-    }
-
     pub fn display_name_versioned(&self, versions: &LanguageVersions) -> String {
         match self {
             Language::Cpp => format!("C++17 (GCC {})", versions.cpp),
