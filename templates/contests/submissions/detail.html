@@ -65,8 +65,11 @@
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0">ソースコード</h2>
-  <pre><code class="language-{{ lang_hljs }}">{{ source_code }}</code></pre>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+    <h2 style="margin:0">ソースコード</h2>
+    <button id="copy-btn" onclick="copySource()" style="padding:.3rem .75rem;font-size:.8rem;background:#fff;color:var(--primary);border:1.5px solid var(--primary);border-radius:var(--radius);cursor:pointer;transition:background .15s">コピー</button>
+  </div>
+  <pre style="margin:0"><code id="source-code" class="language-{{ lang_hljs }}">{{ source_code }}</code></pre>
 </div>
 
 {% if stderr and stderr != "" %}
@@ -76,4 +79,23 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copySource() {
+  const code = document.getElementById('source-code').textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = 'コピーしました';
+    btn.style.background = 'var(--primary)';
+    btn.style.color = '#fff';
+    setTimeout(() => {
+      btn.textContent = 'コピー';
+      btn.style.background = '#fff';
+      btn.style.color = 'var(--primary)';
+    }, 1500);
+  });
+}
+</script>
 {% endblock %}
