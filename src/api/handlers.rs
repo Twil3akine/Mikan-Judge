@@ -173,26 +173,20 @@ fn format_score(value: f64) -> String {
 }
 
 /// 提出クールダウンをチェックし、残りミリ秒を返す（0 なら OK）
-async fn check_submit_cooldown(session: &Session) -> i64 {
-    const COOLDOWN_MS: i64 = 5000;
-    let last_ms: i64 = session
-        .get("last_submit_at")
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or(0);
+async fn check_submit_cooldown(session: &Session, key: &str, cooldown_ms: i64) -> i64 {
+    let last_ms: i64 = session.get(key).await.ok().flatten().unwrap_or(0);
     let now_ms = Utc::now().timestamp_millis();
     let elapsed = now_ms - last_ms;
-    if elapsed < COOLDOWN_MS {
-        COOLDOWN_MS - elapsed
+    if elapsed < cooldown_ms {
+        cooldown_ms - elapsed
     } else {
         0
     }
 }
 
-async fn record_submit_time(session: &Session) {
+async fn record_submit_time(session: &Session, key: &str) {
     let now_ms = Utc::now().timestamp_millis();
-    let _ = session.insert("last_submit_at", now_ms).await;
+    let _ = session.insert(key, now_ms).await;
 }
 
 // ---- 認証ハンドラ ----
@@ -488,18 +482,24 @@ pub async fn contest_problem_submit(
         return Ok(Redirect::to("/login").into_response());
     }
 
+    let contest = db_contest::get_by_id(&state.pool, &contest_id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+
+    let (cooldown_key, cooldown_ms) = if matches!(contest.judge_type, JudgeType::Heuristic) {
+        ("last_heuristic_submit_at", 5 * 60 * 1000)
+    } else {
+        ("last_submit_at", 5000)
+    };
+
     // クールダウンチェック
-    let remaining = check_submit_cooldown(&session).await;
+    let remaining = check_submit_cooldown(&session, cooldown_key, cooldown_ms).await;
     if remaining > 0 {
         return Ok(Redirect::to(&format!(
             "/contests/{contest_id}/problems/{problem_id}?cooldown_remaining_ms={remaining}"
         ))
         .into_response());
     }
-
-    let contest = db_contest::get_by_id(&state.pool, &contest_id)
-        .await?
-        .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
 
     let prob = problem::load_one(&state.problems_dir, &problem_id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
@@ -524,7 +524,7 @@ pub async fn contest_problem_submit(
     };
 
     create_submission(&state.pool, &sub).await?;
-    record_submit_time(&session).await;
+    record_submit_time(&session, cooldown_key).await;
 
     let testcases = prob
         .testcases
