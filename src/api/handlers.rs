@@ -7,15 +7,15 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tera::Context;
 use tower_sessions::Session;
 use uuid::Uuid;
 
 use crate::db::{contest as db_contest, submission as db_sub, user as db_user};
 use crate::problem;
-use crate::types::{JudgeStatus, Language, Submission, SubmitRequest, TestcaseVerdict};
-use crate::worker::{create_submission, JudgeJob};
+use crate::types::{JudgeStatus, JudgeType, Language, Submission, SubmitRequest, TestcaseVerdict};
+use crate::worker::{JudgeJob, create_submission};
 
 use super::AppState;
 
@@ -25,12 +25,18 @@ pub struct HtmlError(anyhow::Error);
 
 impl IntoResponse for HtmlError {
     fn into_response(self) -> Response {
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {}", self.0)).into_response()
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Error: {}", self.0),
+        )
+            .into_response()
     }
 }
 
 impl<E: Into<anyhow::Error>> From<E> for HtmlError {
-    fn from(e: E) -> Self { HtmlError(e.into()) }
+    fn from(e: E) -> Self {
+        HtmlError(e.into())
+    }
 }
 
 // ---- ヘルパー ----
@@ -50,17 +56,25 @@ fn verdict_info(status: &JudgeStatus) -> (&'static str, &'static str, bool) {
         JudgeStatus::RuntimeError { .. } => ("RE", "re", false),
         JudgeStatus::CompileError { .. } => ("CE", "ce", false),
         JudgeStatus::InternalError { .. } => ("IE", "ce", false),
+        JudgeStatus::Scored => ("Scored", "ac", false),
     }
 }
 
 /// セッションからログイン中のユーザ名を取得する。
 async fn current_username(session: &Session, pool: &sqlx::PgPool) -> Option<String> {
     let user_id: Uuid = session.get("user_id").await.ok().flatten()?;
-    db_user::find_by_id(pool, user_id).await.ok().flatten().map(|u| u.username)
+    db_user::find_by_id(pool, user_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|u| u.username)
 }
 
 fn hash_password(password: &str) -> anyhow::Result<String> {
-    use argon2::{Argon2, PasswordHasher, password_hash::{rand_core::OsRng, SaltString}};
+    use argon2::{
+        Argon2, PasswordHasher,
+        password_hash::{SaltString, rand_core::OsRng},
+    };
     let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
         .hash_password(password.as_bytes(), &salt)
@@ -70,8 +84,12 @@ fn hash_password(password: &str) -> anyhow::Result<String> {
 
 fn verify_password(password: &str, hash: &str) -> bool {
     use argon2::{Argon2, PasswordVerifier, password_hash::PasswordHash};
-    let Ok(parsed) = PasswordHash::new(hash) else { return false };
-    Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok()
+    let Ok(parsed) = PasswordHash::new(hash) else {
+        return false;
+    };
+    Argon2::default()
+        .verify_password(password.as_bytes(), &parsed)
+        .is_ok()
 }
 
 /// ページネーションの表示項目を構築する。0 は省略記号（…）を表す。
@@ -85,9 +103,15 @@ fn build_pagination(current: i64, total: i64) -> Vec<i64> {
     let right = (current + window).min(total - 1);
 
     items.push(1);
-    if left > 2 { items.push(0); } // 省略記号
-    for n in left..=right { items.push(n); }
-    if right < total - 1 { items.push(0); } // 省略記号
+    if left > 2 {
+        items.push(0);
+    } // 省略記号
+    for n in left..=right {
+        items.push(n);
+    }
+    if right < total - 1 {
+        items.push(0);
+    } // 省略記号
     items.push(total);
     items
 }
@@ -130,22 +154,40 @@ fn build_lang_labels(versions: &crate::types::LanguageVersions) -> serde_json::V
 /// testcase_results の JSON 文字列から "AC/N" 形式のサマリを生成する。
 /// 新形式 (`[{verdict,time_ms,memory_kb}]`) と旧形式 (`["AC","WA"]`) の両方に対応する。
 fn tc_summary_from_json(json_str: &str) -> Option<String> {
-    let verdicts: Vec<String> = if let Ok(v) = serde_json::from_str::<Vec<TestcaseVerdict>>(json_str) {
-        v.into_iter().map(|tv| tv.verdict).collect()
-    } else {
-        serde_json::from_str::<Vec<String>>(json_str).ok()?
-    };
-    let ac = verdicts.iter().filter(|s| s.as_str() == "AC").count();
+    let verdicts: Vec<String> =
+        if let Ok(v) = serde_json::from_str::<Vec<TestcaseVerdict>>(json_str) {
+            v.into_iter().map(|tv| tv.verdict).collect()
+        } else {
+            serde_json::from_str::<Vec<String>>(json_str).ok()?
+        };
+    let ac = verdicts
+        .iter()
+        .filter(|s| matches!(s.as_str(), "AC" | "SCORED"))
+        .count();
     Some(format!("{ac}/{}", verdicts.len()))
+}
+
+fn format_score(value: f64) -> String {
+    let s = format!("{value:.6}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
 /// 提出クールダウンをチェックし、残りミリ秒を返す（0 なら OK）
 async fn check_submit_cooldown(session: &Session) -> i64 {
     const COOLDOWN_MS: i64 = 5000;
-    let last_ms: i64 = session.get("last_submit_at").await.ok().flatten().unwrap_or(0);
+    let last_ms: i64 = session
+        .get("last_submit_at")
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(0);
     let now_ms = Utc::now().timestamp_millis();
     let elapsed = now_ms - last_ms;
-    if elapsed < COOLDOWN_MS { COOLDOWN_MS - elapsed } else { 0 }
+    if elapsed < COOLDOWN_MS {
+        COOLDOWN_MS - elapsed
+    } else {
+        0
+    }
 }
 
 async fn record_submit_time(session: &Session) {
@@ -160,7 +202,10 @@ pub async fn register_form(
     session: Session,
 ) -> Result<Html<String>, HtmlError> {
     let mut ctx = Context::new();
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     ctx.insert("contest_id", &Option::<String>::None);
     ctx.insert("error", &Option::<String>::None);
     render(&state.tera, "auth/register.html", ctx)
@@ -197,7 +242,10 @@ pub async fn register(
     }
 
     // 重複チェック
-    if db_user::find_by_username(&state.pool, &username).await?.is_some() {
+    if db_user::find_by_username(&state.pool, &username)
+        .await?
+        .is_some()
+    {
         let mut ctx = Context::new();
         ctx.insert("current_user", &Option::<String>::None);
         ctx.insert("contest_id", &Option::<String>::None);
@@ -207,7 +255,9 @@ pub async fn register(
 
     let hash = hash_password(&password)?;
     let user = db_user::insert(&state.pool, &username, &hash).await?;
-    session.insert("user_id", user.id).await
+    session
+        .insert("user_id", user.id)
+        .await
         .map_err(|e| HtmlError(anyhow::anyhow!("session error: {e}")))?;
 
     Ok(Redirect::to("/").into_response())
@@ -218,7 +268,10 @@ pub async fn login_form(
     session: Session,
 ) -> Result<Html<String>, HtmlError> {
     let mut ctx = Context::new();
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     ctx.insert("contest_id", &Option::<String>::None);
     ctx.insert("error", &Option::<String>::None);
     render(&state.tera, "auth/login.html", ctx)
@@ -244,13 +297,17 @@ pub async fn login(
         return Ok(fail().await?.into_response());
     }
 
-    session.insert("user_id", user.id).await
+    session
+        .insert("user_id", user.id)
+        .await
         .map_err(|e| HtmlError(anyhow::anyhow!("session error: {e}")))?;
     Ok(Redirect::to("/").into_response())
 }
 
 pub async fn logout(session: Session) -> Result<Response, HtmlError> {
-    session.flush().await
+    session
+        .flush()
+        .await
         .map_err(|e| HtmlError(anyhow::anyhow!("session error: {e}")))?;
     Ok(Redirect::to("/login").into_response())
 }
@@ -263,8 +320,18 @@ pub async fn index(
 ) -> Result<Html<String>, HtmlError> {
     let lists = db_contest::list_grouped(&state.pool).await?;
     let mut ctx = Context::new();
-    ctx.insert("ongoing", &lists.ongoing.iter().map(to_contest_item).collect::<Vec<_>>());
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "ongoing",
+        &lists
+            .ongoing
+            .iter()
+            .map(to_contest_item)
+            .collect::<Vec<_>>(),
+    );
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     ctx.insert("contest_id", &Option::<String>::None);
     render(&state.tera, "index.html", ctx)
 }
@@ -277,19 +344,37 @@ pub async fn contests_index(
 ) -> Result<Html<String>, HtmlError> {
     let lists = db_contest::list_grouped(&state.pool).await?;
     let mut ctx = Context::new();
-    ctx.insert("ongoing",  &lists.ongoing.iter().map(to_contest_item).collect::<Vec<_>>());
-    ctx.insert("upcoming", &lists.upcoming.iter().map(to_contest_item).collect::<Vec<_>>());
-    ctx.insert("past",     &lists.past.iter().map(to_contest_item).collect::<Vec<_>>());
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "ongoing",
+        &lists
+            .ongoing
+            .iter()
+            .map(to_contest_item)
+            .collect::<Vec<_>>(),
+    );
+    ctx.insert(
+        "upcoming",
+        &lists
+            .upcoming
+            .iter()
+            .map(to_contest_item)
+            .collect::<Vec<_>>(),
+    );
+    ctx.insert(
+        "past",
+        &lists.past.iter().map(to_contest_item).collect::<Vec<_>>(),
+    );
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     ctx.insert("contest_id", &Option::<String>::None);
     render(&state.tera, "contests/list.html", ctx)
 }
 
 // ---- コンテスト詳細（→ 問題一覧へリダイレクト） ----
 
-pub async fn contest_detail(
-    Path(contest_id): Path<String>,
-) -> Redirect {
+pub async fn contest_detail(Path(contest_id): Path<String>) -> Redirect {
     Redirect::to(&format!("/contests/{}/problems", contest_id))
 }
 
@@ -334,7 +419,10 @@ pub async fn contest_problems_index(
     ctx.insert("contest_id", &contest_id);
     ctx.insert("contest_title", &contest.title);
     ctx.insert("problems", &problems);
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     render(&state.tera, "contests/problems/index.html", ctx)
 }
 
@@ -372,7 +460,10 @@ pub async fn contest_problem_detail(
     ctx.insert("problem", &prob);
     ctx.insert("problem_label", &label);
     ctx.insert("lang_labels", &build_lang_labels(&state.lang_versions));
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     ctx.insert("cooldown_remaining_ms", &query.cooldown_remaining_ms);
     render(&state.tera, "contests/problems/detail.html", ctx)
 }
@@ -406,6 +497,10 @@ pub async fn contest_problem_submit(
         .into_response());
     }
 
+    let contest = db_contest::get_by_id(&state.pool, &contest_id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+
     let prob = problem::load_one(&state.problems_dir, &problem_id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
 
@@ -425,23 +520,32 @@ pub async fn contest_problem_submit(
         stdout: None,
         stderr: None,
         testcase_results: None,
+        score: None,
     };
 
     create_submission(&state.pool, &sub).await?;
     record_submit_time(&session).await;
 
-    let testcases = prob.testcases.iter()
+    let testcases = prob
+        .testcases
+        .iter()
         .map(|tc| (tc.input.clone(), tc.expected.clone()))
         .collect();
 
-    state.job_tx.send(JudgeJob {
-        id,
-        source_code: form.source_code,
-        language,
-        testcases,
-        time_limit_ms: prob.time_limit_ms,
-        memory_limit_kb: prob.memory_limit_kb,
-    }).await.map_err(|e| HtmlError(anyhow::anyhow!("{e}")))?;
+    state
+        .job_tx
+        .send(JudgeJob {
+            id,
+            source_code: form.source_code,
+            language,
+            testcases,
+            time_limit_ms: prob.time_limit_ms,
+            memory_limit_kb: prob.memory_limit_kb,
+            judge_type: contest.judge_type,
+            scorer_path: prob.scorer_path,
+        })
+        .await
+        .map_err(|e| HtmlError(anyhow::anyhow!("{e}")))?;
 
     Ok(Redirect::to(&format!("/contests/{contest_id}/submissions/{id}")).into_response())
 }
@@ -466,6 +570,7 @@ struct SubmissionListItem {
     time_used_ms: Option<u64>,
     memory_used_kb: Option<u64>,
     tc_summary: Option<String>,
+    score: Option<String>,
 }
 
 pub async fn contest_submissions_index(
@@ -489,12 +594,16 @@ pub async fn contest_submissions_index(
 
     // problem label map
     let cp_list = db_contest::problems_for_contest(&state.pool, &contest_id).await?;
-    let label_map: std::collections::HashMap<&str, &str> =
-        cp_list.iter().map(|cp| (cp.problem_id.as_str(), cp.label.as_str())).collect();
+    let label_map: std::collections::HashMap<&str, &str> = cp_list
+        .iter()
+        .map(|cp| (cp.problem_id.as_str(), cp.label.as_str()))
+        .collect();
 
     let problems = problem::load_all(&state.problems_dir);
-    let title_map: std::collections::HashMap<&str, &str> =
-        problems.iter().map(|p| (p.id.as_str(), p.title.as_str())).collect();
+    let title_map: std::collections::HashMap<&str, &str> = problems
+        .iter()
+        .map(|p| (p.id.as_str(), p.title.as_str()))
+        .collect();
 
     let items: Vec<SubmissionListItem> = rows
         .iter()
@@ -517,12 +626,14 @@ pub async fn contest_submissions_index(
                 problem_label,
                 problem_title,
                 username: s.username.clone(),
-                language: Language::from_db(&s.language).display_name_versioned(&state.lang_versions),
+                language: Language::from_db(&s.language)
+                    .display_name_versioned(&state.lang_versions),
                 verdict,
                 badge_class,
                 time_used_ms: s.time_used_ms.map(|v| v as u64),
                 memory_used_kb: s.memory_used_kb.map(|v| v as u64),
                 tc_summary: s.testcase_results.as_deref().and_then(tc_summary_from_json),
+                score: s.score.map(format_score),
             }
         })
         .collect();
@@ -533,11 +644,18 @@ pub async fn contest_submissions_index(
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
     ctx.insert("contest_title", &contest.title);
+    ctx.insert(
+        "is_heuristic",
+        &matches!(contest.judge_type, JudgeType::Heuristic),
+    );
     ctx.insert("submissions", &items);
     ctx.insert("current_page", &page);
     ctx.insert("total_pages", &total_pages);
     ctx.insert("pagination", &pagination);
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     render(&state.tera, "contests/submissions/index.html", ctx)
 }
 
@@ -559,7 +677,10 @@ pub async fn contest_submission_detail(
     let (verdict, badge_class, is_pending) = verdict_info(&sub.status);
 
     let prob = problem::load_one(&state.problems_dir, &sub.problem_id).ok();
-    let problem_title = prob.as_ref().map(|p| p.title.clone()).unwrap_or_else(|| sub.problem_id.clone());
+    let problem_title = prob
+        .as_ref()
+        .map(|p| p.title.clone())
+        .unwrap_or_else(|| sub.problem_id.clone());
     let problem_score = prob.as_ref().map(|p| p.score);
 
     // problem label
@@ -573,12 +694,17 @@ pub async fn contest_submission_detail(
     // 開催中コンテストでは提出者本人のみ詳細を閲覧可能（情報を一切渡さない）
     let current_user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
     let is_ongoing = matches!(contest.status(), crate::types::ContestStatus::Ongoing);
-    let is_owner = sub.user_id.map_or(false, |uid| Some(uid) == current_user_id);
+    let is_owner = sub
+        .user_id
+        .map_or(false, |uid| Some(uid) == current_user_id);
     if is_ongoing && !is_owner {
         let mut ctx = Context::new();
         ctx.insert("contest_id", &contest_id);
         ctx.insert("contest_title", &contest.title);
-        ctx.insert("current_user", &current_username(&session, &state.pool).await);
+        ctx.insert(
+            "current_user",
+            &current_username(&session, &state.pool).await,
+        );
         return render(&state.tera, "errors/forbidden.html", ctx);
     }
 
@@ -594,7 +720,10 @@ pub async fn contest_submission_detail(
     ctx.insert("problem_id", &sub.problem_id);
     ctx.insert("problem_title", &problem_title);
     ctx.insert("problem_label", &problem_label);
-    ctx.insert("language", &sub.language.display_name_versioned(&state.lang_versions));
+    ctx.insert(
+        "language",
+        &sub.language.display_name_versioned(&state.lang_versions),
+    );
     ctx.insert("lang_hljs", lang_hljs);
     ctx.insert("source_code", &sub.source_code);
     ctx.insert("verdict", verdict);
@@ -606,8 +735,13 @@ pub async fn contest_submission_detail(
     ctx.insert("stderr", &sub.stderr);
     ctx.insert("testcase_results", &sub.testcase_results);
     ctx.insert("problem_score", &problem_score);
+    ctx.insert("submission_score", &sub.score.map(format_score));
     ctx.insert("is_accepted", &matches!(sub.status, JudgeStatus::Accepted));
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert("is_scored", &matches!(sub.status, JudgeStatus::Scored));
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     render(&state.tera, "contests/submissions/detail.html", ctx)
 }
 
@@ -644,6 +778,8 @@ pub async fn contest_standings(
 
     let cp_list = db_contest::problems_for_contest(&state.pool, &contest_id).await?;
 
+    let is_heuristic = matches!(contest.judge_type, JudgeType::Heuristic);
+
     // 問題スコアの map
     let mut score_map: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
     for cp in &cp_list {
@@ -652,28 +788,12 @@ pub async fn contest_standings(
         }
     }
 
-    let first_acs = db_sub::first_acs_for_contest(&state.pool, &contest_id).await?;
-
-    // ユーザごとに集計 (key: user_id)
-    struct UserData {
-        username: String,
-        solved: HashMap<String, DateTime<Utc>>, // problem_id -> first_ac_at
-    }
-
-    let mut user_map: HashMap<Uuid, UserData> = HashMap::new();
-    for row in &first_acs {
-        let entry = user_map.entry(row.user_id).or_insert_with(|| UserData {
-            username: row.username.clone(),
-            solved: HashMap::new(),
-        });
-        entry.solved.insert(row.problem_id.clone(), row.first_ac_at);
-    }
-
     #[derive(Serialize)]
     struct ProblemCell {
         label: String,
         ac_time: Option<String>,
-        score: u64,
+        score: String,
+        has_result: bool,
     }
 
     fn fmt_elapsed(secs: i64) -> String {
@@ -687,7 +807,7 @@ pub async fn contest_standings(
     struct StandingRow {
         rank: usize,
         username: String,
-        total_score: u64,
+        total_score: String,
         /// コンテスト開始からの経過時間（表示用）
         elapsed_from_start: Option<String>,
         problems: Vec<ProblemCell>,
@@ -696,80 +816,158 @@ pub async fn contest_standings(
     // ソート用に生の DateTime を保持する中間構造体
     struct RowWithRaw {
         row: StandingRow,
+        total_score_raw: f64,
         last_ac_raw: Option<DateTime<Utc>>,
     }
 
-    let mut rows_raw: Vec<RowWithRaw> = user_map
-        .values()
-        .map(|ud| {
-            let mut total_score: u64 = 0;
-            let mut last_ac: Option<DateTime<Utc>> = None;
-            let problems: Vec<ProblemCell> = cp_list
-                .iter()
-                .map(|cp| {
-                    let ac_at = ud.solved.get(&cp.problem_id);
-                    let score = score_map.get(&cp.problem_id).copied().unwrap_or(0);
-                    if let Some(&at) = ac_at {
-                        total_score += score;
-                        last_ac = Some(match last_ac {
-                            None => at,
-                            Some(prev) => prev.max(at),
-                        });
-                    }
-                    ProblemCell {
-                        label: cp.label.clone(),
-                        ac_time: ac_at.map(|t| {
-                            let secs = (*t - contest.start_time).num_seconds().max(0);
-                            fmt_elapsed(secs)
-                        }),
-                        score: if ac_at.is_some() { score } else { 0 },
-                    }
-                })
-                .collect();
+    let mut rows_raw: Vec<RowWithRaw> = if is_heuristic {
+        struct UserData {
+            username: String,
+            scores: HashMap<String, f64>,
+        }
 
-            let elapsed_from_start = last_ac.map(|t| {
-                let secs = (t - contest.start_time).num_seconds().max(0);
-                fmt_elapsed(secs)
+        let best_scores = db_sub::best_scores_for_contest(&state.pool, &contest_id).await?;
+        let mut user_map: HashMap<Uuid, UserData> = HashMap::new();
+        for row in &best_scores {
+            let entry = user_map.entry(row.user_id).or_insert_with(|| UserData {
+                username: row.username.clone(),
+                scores: HashMap::new(),
             });
+            entry.scores.insert(row.problem_id.clone(), row.best_score);
+        }
 
-            RowWithRaw {
-                row: StandingRow {
-                    rank: 0,
-                    username: ud.username.clone(),
-                    total_score,
-                    elapsed_from_start,
-                    problems,
-                },
-                last_ac_raw: last_ac,
-            }
-        })
-        .collect();
+        user_map
+            .values()
+            .map(|ud| {
+                let mut total_score = 0.0;
+                let problems: Vec<ProblemCell> = cp_list
+                    .iter()
+                    .map(|cp| {
+                        let score = ud.scores.get(&cp.problem_id).copied();
+                        if let Some(s) = score {
+                            total_score += s;
+                        }
+                        ProblemCell {
+                            label: cp.label.clone(),
+                            ac_time: None,
+                            score: score.map(format_score).unwrap_or_default(),
+                            has_result: score.is_some(),
+                        }
+                    })
+                    .collect();
 
-    // 順位付け: 得点 DESC, last_ac_raw ASC（None は最後）
+                RowWithRaw {
+                    row: StandingRow {
+                        rank: 0,
+                        username: ud.username.clone(),
+                        total_score: format_score(total_score),
+                        elapsed_from_start: None,
+                        problems,
+                    },
+                    total_score_raw: total_score,
+                    last_ac_raw: None,
+                }
+            })
+            .collect()
+    } else {
+        let first_acs = db_sub::first_acs_for_contest(&state.pool, &contest_id).await?;
+
+        // ユーザごとに集計 (key: user_id)
+        struct UserData {
+            username: String,
+            solved: HashMap<String, DateTime<Utc>>, // problem_id -> first_ac_at
+        }
+
+        let mut user_map: HashMap<Uuid, UserData> = HashMap::new();
+        for row in &first_acs {
+            let entry = user_map.entry(row.user_id).or_insert_with(|| UserData {
+                username: row.username.clone(),
+                solved: HashMap::new(),
+            });
+            entry.solved.insert(row.problem_id.clone(), row.first_ac_at);
+        }
+
+        user_map
+            .values()
+            .map(|ud| {
+                let mut total_score: u64 = 0;
+                let mut last_ac: Option<DateTime<Utc>> = None;
+                let problems: Vec<ProblemCell> = cp_list
+                    .iter()
+                    .map(|cp| {
+                        let ac_at = ud.solved.get(&cp.problem_id);
+                        let score = score_map.get(&cp.problem_id).copied().unwrap_or(0);
+                        if let Some(&at) = ac_at {
+                            total_score += score;
+                            last_ac = Some(match last_ac {
+                                None => at,
+                                Some(prev) => prev.max(at),
+                            });
+                        }
+                        ProblemCell {
+                            label: cp.label.clone(),
+                            ac_time: ac_at.map(|t| {
+                                let secs = (*t - contest.start_time).num_seconds().max(0);
+                                fmt_elapsed(secs)
+                            }),
+                            score: if ac_at.is_some() {
+                                score.to_string()
+                            } else {
+                                String::new()
+                            },
+                            has_result: ac_at.is_some(),
+                        }
+                    })
+                    .collect();
+
+                let elapsed_from_start = last_ac.map(|t| {
+                    let secs = (t - contest.start_time).num_seconds().max(0);
+                    fmt_elapsed(secs)
+                });
+
+                RowWithRaw {
+                    row: StandingRow {
+                        rank: 0,
+                        username: ud.username.clone(),
+                        total_score: total_score.to_string(),
+                        elapsed_from_start,
+                        problems,
+                    },
+                    total_score_raw: total_score as f64,
+                    last_ac_raw: last_ac,
+                }
+            })
+            .collect()
+    };
+
+    // 順位付け: 得点 DESC。exact は同点なら last_ac_raw ASC、heuristic はユーザ名 ASC。
     rows_raw.sort_by(|a, b| {
-        b.row.total_score.cmp(&a.row.total_score).then_with(|| {
-            match (&a.last_ac_raw, &b.last_ac_raw) {
+        b.total_score_raw
+            .partial_cmp(&a.total_score_raw)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| match (&a.last_ac_raw, &b.last_ac_raw) {
                 (Some(at), Some(bt)) => at.cmp(bt),
                 (None, Some(_)) => std::cmp::Ordering::Greater,
                 (Some(_), None) => std::cmp::Ordering::Less,
-                (None, None) => std::cmp::Ordering::Equal,
-            }
-        })
+                (None, None) => a.row.username.cmp(&b.row.username),
+            })
     });
 
-    let mut rows: Vec<StandingRow> = rows_raw.into_iter().map(|r| r.row).collect();
-
-    let mut prev_score = u64::MAX;
+    let mut prev_score: Option<f64> = None;
     let mut prev_elapsed: Option<String> = None;
     let mut current_rank = 0usize;
-    for (i, row) in rows.iter_mut().enumerate() {
-        if row.total_score != prev_score || row.elapsed_from_start != prev_elapsed {
+    for (i, r) in rows_raw.iter_mut().enumerate() {
+        let same_score =
+            prev_score.map_or(false, |s| (r.total_score_raw - s).abs() <= f64::EPSILON);
+        if !same_score || (!is_heuristic && r.row.elapsed_from_start != prev_elapsed) {
             current_rank = i + 1;
-            prev_score = row.total_score;
-            prev_elapsed = row.elapsed_from_start.clone();
+            prev_score = Some(r.total_score_raw);
+            prev_elapsed = r.row.elapsed_from_start.clone();
         }
-        row.rank = current_rank;
+        r.row.rank = current_rank;
     }
+
+    let rows: Vec<StandingRow> = rows_raw.into_iter().map(|r| r.row).collect();
 
     #[derive(Serialize)]
     struct ProblemHeader {
@@ -782,12 +980,14 @@ pub async fn contest_standings(
     let problem_headers: Vec<ProblemHeader> = cp_list
         .iter()
         .filter_map(|cp| {
-            problem::load_one(&state.problems_dir, &cp.problem_id).ok().map(|p| ProblemHeader {
-                label: cp.label.clone(),
-                problem_id: cp.problem_id.clone(),
-                title: p.title,
-                score: p.score,
-            })
+            problem::load_one(&state.problems_dir, &cp.problem_id)
+                .ok()
+                .map(|p| ProblemHeader {
+                    label: cp.label.clone(),
+                    problem_id: cp.problem_id.clone(),
+                    title: p.title,
+                    score: p.score,
+                })
         })
         .collect();
 
@@ -803,12 +1003,16 @@ pub async fn contest_standings(
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
     ctx.insert("contest_title", &contest.title);
+    ctx.insert("is_heuristic", &is_heuristic);
     ctx.insert("problem_headers", &problem_headers);
     ctx.insert("standings", page_rows);
     ctx.insert("current_page", &page);
     ctx.insert("total_pages", &total_pages);
     ctx.insert("pagination", &pagination);
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     render(&state.tera, "contests/standings.html", ctx)
 }
 
@@ -822,7 +1026,10 @@ pub async fn problems_index(
     let mut ctx = Context::new();
     ctx.insert("problems", &problems);
     ctx.insert("contest_id", &Option::<String>::None);
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     render(&state.tera, "problems/index.html", ctx)
 }
 
@@ -837,7 +1044,10 @@ pub async fn problems_detail(
     ctx.insert("problem", &prob);
     ctx.insert("lang_labels", &build_lang_labels(&state.lang_versions));
     ctx.insert("contest_id", &Option::<String>::None);
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     ctx.insert("cooldown_remaining_ms", &Option::<i64>::None);
     render(&state.tera, "problems/detail.html", ctx)
 }
@@ -872,22 +1082,31 @@ pub async fn problems_submit(
         stdout: None,
         stderr: None,
         testcase_results: None,
+        score: None,
     };
 
     create_submission(&state.pool, &sub).await?;
 
-    let testcases = prob.testcases.iter()
+    let testcases = prob
+        .testcases
+        .iter()
         .map(|tc| (tc.input.clone(), tc.expected.clone()))
         .collect();
 
-    state.job_tx.send(JudgeJob {
-        id,
-        source_code: form.source_code,
-        language,
-        testcases,
-        time_limit_ms: prob.time_limit_ms,
-        memory_limit_kb: prob.memory_limit_kb,
-    }).await.map_err(|e| HtmlError(anyhow::anyhow!("{e}")))?;
+    state
+        .job_tx
+        .send(JudgeJob {
+            id,
+            source_code: form.source_code,
+            language,
+            testcases,
+            time_limit_ms: prob.time_limit_ms,
+            memory_limit_kb: prob.memory_limit_kb,
+            judge_type: JudgeType::Exact,
+            scorer_path: None,
+        })
+        .await
+        .map_err(|e| HtmlError(anyhow::anyhow!("{e}")))?;
 
     Ok(Redirect::to(&format!("/submissions/{id}")).into_response())
 }
@@ -920,12 +1139,14 @@ pub async fn submissions_index(
                 problem_label: String::new(),
                 problem_title,
                 username: s.username.clone(),
-                language: Language::from_db(&s.language).display_name_versioned(&state.lang_versions),
+                language: Language::from_db(&s.language)
+                    .display_name_versioned(&state.lang_versions),
                 verdict,
                 badge_class,
                 time_used_ms: s.time_used_ms.map(|v| v as u64),
                 memory_used_kb: s.memory_used_kb.map(|v| v as u64),
                 tc_summary: s.testcase_results.as_deref().and_then(tc_summary_from_json),
+                score: s.score.map(format_score),
             }
         })
         .collect();
@@ -933,7 +1154,10 @@ pub async fn submissions_index(
     let mut ctx = Context::new();
     ctx.insert("submissions", &items);
     ctx.insert("contest_id", &Option::<String>::None);
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
     render(&state.tera, "submissions/index.html", ctx)
 }
 
@@ -949,7 +1173,10 @@ pub async fn submissions_detail(
     let (verdict, badge_class, is_pending) = verdict_info(&sub.status);
 
     let prob = problem::load_one(&state.problems_dir, &sub.problem_id).ok();
-    let problem_title = prob.as_ref().map(|p| p.title.clone()).unwrap_or_else(|| sub.problem_id.clone());
+    let problem_title = prob
+        .as_ref()
+        .map(|p| p.title.clone())
+        .unwrap_or_else(|| sub.problem_id.clone());
     let problem_score = prob.as_ref().map(|p| p.score);
 
     let lang_hljs = match sub.language.to_db() {
@@ -962,7 +1189,10 @@ pub async fn submissions_detail(
     ctx.insert("id", &sub.id.to_string());
     ctx.insert("problem_id", &sub.problem_id);
     ctx.insert("problem_title", &problem_title);
-    ctx.insert("language", &sub.language.display_name_versioned(&state.lang_versions));
+    ctx.insert(
+        "language",
+        &sub.language.display_name_versioned(&state.lang_versions),
+    );
     ctx.insert("lang_hljs", lang_hljs);
     ctx.insert("source_code", &sub.source_code);
     ctx.insert("verdict", verdict);
@@ -975,7 +1205,10 @@ pub async fn submissions_detail(
     ctx.insert("testcase_results", &sub.testcase_results);
     ctx.insert("problem_score", &problem_score);
     ctx.insert("is_accepted", &matches!(sub.status, JudgeStatus::Accepted));
-    ctx.insert("current_user", &current_username(&session, &state.pool).await);
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
 
     render(&state.tera, "submissions/detail.html", ctx)
 }
@@ -1022,6 +1255,7 @@ pub async fn api_submit(
         stdout: None,
         stderr: None,
         testcase_results: None,
+        score: None,
     };
 
     create_submission(&state.pool, &sub).await.map_err(|e| {
@@ -1029,14 +1263,20 @@ pub async fn api_submit(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    state.job_tx.send(JudgeJob {
-        id,
-        source_code: req.source_code,
-        language: req.language,
-        testcases: vec![(req.stdin, req.expected_output)],
-        time_limit_ms: req.time_limit_ms,
-        memory_limit_kb: req.memory_limit_kb,
-    }).await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    state
+        .job_tx
+        .send(JudgeJob {
+            id,
+            source_code: req.source_code,
+            language: req.language,
+            testcases: vec![(req.stdin, Some(req.expected_output))],
+            time_limit_ms: req.time_limit_ms,
+            memory_limit_kb: req.memory_limit_kb,
+            judge_type: JudgeType::Exact,
+            scorer_path: None,
+        })
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
     Ok(Json(json!({ "id": id })))
 }

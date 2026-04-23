@@ -20,6 +20,7 @@ struct SubmissionRow {
     stdout: Option<String>,
     stderr: Option<String>,
     testcase_results: Option<String>,
+    score: Option<f64>,
 }
 
 impl SubmissionRow {
@@ -31,7 +32,15 @@ impl SubmissionRow {
                 return Some(v);
             }
             serde_json::from_str::<Vec<String>>(&s).ok().map(|strings| {
-                strings.into_iter().map(|v| TestcaseVerdict { verdict: v, time_ms: None, memory_kb: None }).collect()
+                strings
+                    .into_iter()
+                    .map(|v| TestcaseVerdict {
+                        verdict: v,
+                        time_ms: None,
+                        memory_kb: None,
+                        score: None,
+                    })
+                    .collect()
             })
         });
         Submission {
@@ -47,6 +56,7 @@ impl SubmissionRow {
             stdout: self.stdout,
             stderr: self.stderr,
             testcase_results,
+            score: self.score,
         }
     }
 }
@@ -62,6 +72,7 @@ pub struct SubmissionListRow {
     pub time_used_ms: Option<i64>,
     pub memory_used_kb: Option<i64>,
     pub testcase_results: Option<String>,
+    pub score: Option<f64>,
 }
 
 pub async fn insert(pool: &PgPool, sub: &Submission) -> Result<()> {
@@ -84,7 +95,7 @@ pub async fn insert(pool: &PgPool, sub: &Submission) -> Result<()> {
 pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Submission>> {
     let row = sqlx::query_as::<_, SubmissionRow>(
         "SELECT id, user_id, contest_id, problem_id, language, source_code, status,
-                time_used_ms, memory_used_kb, stdout, stderr, testcase_results
+                time_used_ms, memory_used_kb, stdout, stderr, testcase_results, score
          FROM submissions WHERE id = $1",
     )
     .bind(id)
@@ -102,13 +113,14 @@ pub async fn update_result(
     stdout: Option<&str>,
     stderr: Option<&str>,
     testcase_results: Option<&[TestcaseVerdict]>,
+    score: Option<f64>,
 ) -> Result<()> {
     let tc_json = testcase_results.map(|v| serde_json::to_string(v).unwrap_or_default());
     sqlx::query(
         "UPDATE submissions
          SET status = $1, time_used_ms = $2, memory_used_kb = $3,
-             stdout = $4, stderr = $5, testcase_results = $6
-         WHERE id = $7",
+             stdout = $4, stderr = $5, testcase_results = $6, score = $7
+         WHERE id = $8",
     )
     .bind(status.to_db())
     .bind(time_used_ms.map(|v| v as i64))
@@ -116,6 +128,7 @@ pub async fn update_result(
     .bind(stdout)
     .bind(stderr)
     .bind(tc_json)
+    .bind(score)
     .bind(id)
     .execute(pool)
     .await?;
@@ -125,7 +138,7 @@ pub async fn update_result(
 pub async fn list_recent(pool: &PgPool, limit: i64) -> Result<Vec<SubmissionListRow>> {
     let rows = sqlx::query_as::<_, SubmissionListRow>(
         "SELECT s.id, u.username, s.problem_id, s.language, s.status,
-                s.time_used_ms, s.memory_used_kb, s.testcase_results
+                s.time_used_ms, s.memory_used_kb, s.testcase_results, s.score
          FROM submissions s
          LEFT JOIN users u ON s.user_id = u.id
          ORDER BY s.created_at DESC LIMIT $1",
@@ -146,7 +159,7 @@ pub async fn list_for_contest(
     let offset = (page - 1) * per_page;
     let rows = sqlx::query_as::<_, SubmissionListRow>(
         "SELECT s.id, u.username, s.problem_id, s.language, s.status,
-                s.time_used_ms, s.memory_used_kb, s.testcase_results
+                s.time_used_ms, s.memory_used_kb, s.testcase_results, s.score
          FROM submissions s
          LEFT JOIN users u ON s.user_id = u.id
          WHERE s.contest_id = $1
@@ -162,12 +175,10 @@ pub async fn list_for_contest(
 }
 
 pub async fn count_for_contest(pool: &PgPool, contest_id: &str) -> Result<i64> {
-    let row: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM submissions WHERE contest_id = $1",
-    )
-    .bind(contest_id)
-    .fetch_one(pool)
-    .await?;
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM submissions WHERE contest_id = $1")
+        .bind(contest_id)
+        .fetch_one(pool)
+        .await?;
     Ok(row.0)
 }
 
@@ -189,10 +200,7 @@ pub struct FirstAcRow {
     pub first_ac_at: DateTime<Utc>,
 }
 
-pub async fn first_acs_for_contest(
-    pool: &PgPool,
-    contest_id: &str,
-) -> Result<Vec<FirstAcRow>> {
+pub async fn first_acs_for_contest(pool: &PgPool, contest_id: &str) -> Result<Vec<FirstAcRow>> {
     let rows = sqlx::query_as::<_, FirstAcRow>(
         "SELECT s.user_id, u.username, s.problem_id, MIN(s.created_at) AS first_ac_at
          FROM submissions s
@@ -200,6 +208,33 @@ pub async fn first_acs_for_contest(
          WHERE s.contest_id = $1
            AND s.status = 'accepted'
            AND s.user_id IS NOT NULL
+         GROUP BY s.user_id, u.username, s.problem_id
+         ORDER BY s.user_id, s.problem_id",
+    )
+    .bind(contest_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// ヒューリスティックコンテスト用: ユーザ×問題ごとの最高スコア
+#[derive(Debug, sqlx::FromRow)]
+pub struct BestScoreRow {
+    pub user_id: Uuid,
+    pub username: String,
+    pub problem_id: String,
+    pub best_score: f64,
+}
+
+pub async fn best_scores_for_contest(pool: &PgPool, contest_id: &str) -> Result<Vec<BestScoreRow>> {
+    let rows = sqlx::query_as::<_, BestScoreRow>(
+        "SELECT s.user_id, u.username, s.problem_id, MAX(s.score) AS best_score
+         FROM submissions s
+         JOIN users u ON s.user_id = u.id
+         WHERE s.contest_id = $1
+           AND s.status = 'scored'
+           AND s.user_id IS NOT NULL
+           AND s.score IS NOT NULL
          GROUP BY s.user_id, u.username, s.problem_id
          ORDER BY s.user_id, s.problem_id",
     )

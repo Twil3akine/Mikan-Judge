@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
-use crate::types::{Contest, ContestProblem, ContestStatus};
+use crate::types::{Contest, ContestProblem, ContestStatus, JudgeType};
 
 #[derive(Debug, sqlx::FromRow)]
 struct ContestRow {
@@ -11,6 +11,7 @@ struct ContestRow {
     pub description: String,
     pub start_time: DateTime<Utc>,
     pub end_time: DateTime<Utc>,
+    pub judge_type: String,
 }
 
 impl ContestRow {
@@ -21,13 +22,14 @@ impl ContestRow {
             description: self.description,
             start_time: self.start_time,
             end_time: self.end_time,
+            judge_type: JudgeType::from_db(&self.judge_type),
         }
     }
 }
 
 pub async fn list_all(pool: &PgPool) -> Result<Vec<Contest>> {
     let rows = sqlx::query_as::<_, ContestRow>(
-        "SELECT id, title, description, start_time, end_time
+        "SELECT id, title, description, start_time, end_time, judge_type
          FROM contests ORDER BY start_time DESC",
     )
     .fetch_all(pool)
@@ -37,7 +39,8 @@ pub async fn list_all(pool: &PgPool) -> Result<Vec<Contest>> {
 
 pub async fn get_by_id(pool: &PgPool, contest_id: &str) -> Result<Option<Contest>> {
     let row = sqlx::query_as::<_, ContestRow>(
-        "SELECT id, title, description, start_time, end_time FROM contests WHERE id = $1",
+        "SELECT id, title, description, start_time, end_time, judge_type
+         FROM contests WHERE id = $1",
     )
     .bind(contest_id)
     .fetch_optional(pool)
@@ -45,10 +48,7 @@ pub async fn get_by_id(pool: &PgPool, contest_id: &str) -> Result<Option<Contest
     Ok(row.map(|r| r.into_contest()))
 }
 
-pub async fn problems_for_contest(
-    pool: &PgPool,
-    contest_id: &str,
-) -> Result<Vec<ContestProblem>> {
+pub async fn problems_for_contest(pool: &PgPool, contest_id: &str) -> Result<Vec<ContestProblem>> {
     #[derive(sqlx::FromRow)]
     struct Row {
         label: String,
@@ -93,5 +93,9 @@ pub async fn list_grouped(pool: &PgPool) -> Result<ContestLists> {
     }
     // upcoming は開催が近い順に
     upcoming.sort_by_key(|c| c.start_time);
-    Ok(ContestLists { ongoing, upcoming, past })
+    Ok(ContestLists {
+        ongoing,
+        upcoming,
+        past,
+    })
 }

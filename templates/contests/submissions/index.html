@@ -17,6 +17,9 @@
         <th>言語</th>
         <th>結果</th>
         <th>ケース</th>
+        {% if is_heuristic %}
+        <th style="text-align:right">スコア</th>
+        {% endif %}
         <th>実行時間</th>
         <th>メモリ</th>
       </tr>
@@ -32,7 +35,12 @@
         </td>
         <td>{{ s.language }}</td>
         <td><span class="badge badge-{{ s.badge_class }}">{{ s.verdict }}</span></td>
-        <td>{% if s.tc_summary %}{{ s.tc_summary }} AC{% else %}—{% endif %}</td>
+        <td>{% if s.tc_summary %}{{ s.tc_summary }}{% else %}—{% endif %}</td>
+        {% if is_heuristic %}
+        <td style="text-align:right;font-weight:700;color:var(--primary)">
+          {% if s.score %}{{ s.score }}{% else %}—{% endif %}
+        </td>
+        {% endif %}
         <td>{% if s.time_used_ms %}{{ s.time_used_ms }} ms{% else %}—{% endif %}</td>
         <td>{% if s.memory_used_kb %}{{ s.memory_used_kb }} KB{% else %}—{% endif %}</td>
       </tr>
