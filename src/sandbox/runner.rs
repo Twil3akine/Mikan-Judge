@@ -6,9 +6,15 @@
 ///   ロック状態を気にせず fork できる（それでも完全に安全ではないが、
 ///   競合プログラミングジャッジの実用範囲では許容される）。
 use std::ffi::CString;
+#[cfg(target_os = "linux")]
+use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::{IntoRawFd, RawFd};
 use std::path::Path;
+#[cfg(target_os = "linux")]
+use std::path::PathBuf;
+#[cfg(target_os = "linux")]
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
@@ -17,6 +23,9 @@ use nix::sys::wait::WaitStatus;
 use nix::unistd::{ForkResult, Pid, fork};
 
 use super::{RunResult, RunStatus, SandboxConfig};
+
+#[cfg(target_os = "linux")]
+static CGROUP_SEQ: AtomicU64 = AtomicU64::new(0);
 
 pub fn run_sandboxed_blocking(
     executable: &Path,
@@ -28,6 +37,10 @@ pub fn run_sandboxed_blocking(
     let (stdin_r, stdin_w) = make_pipe()?;
     let (stdout_r, stdout_w) = make_pipe()?;
     let (stderr_r, stderr_w) = make_pipe()?;
+    #[cfg(target_os = "linux")]
+    let cgroup = LinuxCgroup::new();
+    #[cfg(not(target_os = "linux"))]
+    let cgroup: Option<()> = None;
 
     let start = Instant::now();
 
@@ -39,7 +52,7 @@ pub fn run_sandboxed_blocking(
         ),
         ForkResult::Parent { child } => parent_collect(
             child, stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w, stdin_data, config,
-            start,
+            start, cgroup,
         ),
     }
 }
@@ -163,12 +176,19 @@ fn parent_collect(
     stdin_data: &[u8],
     config: &SandboxConfig,
     start: Instant,
+    #[cfg(target_os = "linux")] cgroup: Option<LinuxCgroup>,
+    #[cfg(not(target_os = "linux"))] _cgroup: Option<()>,
 ) -> Result<RunResult> {
     // 子プロセス側のパイプ端を親では閉じる
     unsafe {
         libc::close(stdin_r);
         libc::close(stdout_w);
         libc::close(stderr_w);
+    }
+
+    #[cfg(target_os = "linux")]
+    if let Some(ref cgroup) = cgroup {
+        let _ = cgroup.add_process(child);
     }
 
     // stdin を別スレッドで書き込む（パイプバッファを詰まらせないため）
@@ -236,7 +256,10 @@ fn parent_collect(
     let time_used = start.elapsed();
 
     #[cfg(target_os = "linux")]
-    let memory_used_bytes = (child_rusage.ru_maxrss as u64).saturating_mul(1024);
+    let memory_used_bytes = cgroup
+        .as_ref()
+        .and_then(LinuxCgroup::memory_peak_bytes)
+        .unwrap_or_else(|| (child_rusage.ru_maxrss as u64).saturating_mul(1024));
     #[cfg(not(target_os = "linux"))]
     let memory_used_bytes = child_rusage.ru_maxrss as u64;
 
@@ -254,6 +277,54 @@ fn parent_collect(
         memory_used_bytes,
         status,
     })
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxCgroup {
+    dir: PathBuf,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxCgroup {
+    fn new() -> Option<Self> {
+        let base = Path::new("/sys/fs/cgroup/mikan-judge");
+        ensure_cgroup_dir(base).ok()?;
+
+        let run_dir = base.join(format!(
+            "run-{}-{}",
+            std::process::id(),
+            CGROUP_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&run_dir).ok()?;
+        Some(Self { dir: run_dir })
+    }
+
+    fn add_process(&self, pid: Pid) -> Result<()> {
+        fs::write(self.dir.join("cgroup.procs"), format!("{}\n", pid.as_raw()))
+            .context("failed to move child process into cgroup")
+    }
+
+    fn memory_peak_bytes(&self) -> Option<u64> {
+        let raw = fs::read_to_string(self.dir.join("memory.peak")).ok()?;
+        raw.trim().parse::<u64>().ok()
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for LinuxCgroup {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir(&self.dir);
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn ensure_cgroup_dir(dir: &Path) -> Result<()> {
+    fs::create_dir_all(dir).context("failed to create cgroup directory")?;
+    let controllers = fs::read_to_string(dir.join("cgroup.controllers")).unwrap_or_default();
+    if controllers.split_whitespace().any(|controller| controller == "memory") {
+        let _ = fs::write(dir.join("cgroup.subtree_control"), "+memory\n");
+    }
+    Ok(())
 }
 
 fn determine_status(
