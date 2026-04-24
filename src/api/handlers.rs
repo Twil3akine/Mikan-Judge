@@ -128,6 +128,17 @@ struct ContestItem {
     status_class: &'static str,
 }
 
+#[derive(Serialize)]
+struct LanguageGuideItem {
+    name: &'static str,
+    version: String,
+    source_file: &'static str,
+    compile_command: &'static str,
+    run_command: &'static str,
+    libraries: &'static str,
+    notes: &'static str,
+}
+
 fn to_contest_item(c: &crate::types::Contest) -> ContestItem {
     let st = c.status();
     ContestItem {
@@ -139,6 +150,76 @@ fn to_contest_item(c: &crate::types::Contest) -> ContestItem {
         status_label: st.label(),
         status_class: st.badge_class(),
     }
+}
+
+fn build_language_guide_items(
+    versions: &crate::types::LanguageVersions,
+) -> Vec<LanguageGuideItem> {
+    vec![
+        LanguageGuideItem {
+            name: "C++17",
+            version: format!("GCC {}", versions.cpp),
+            source_file: "solution.cpp",
+            compile_command: "g++ solution.cpp -o solution -O2 -std=c++17",
+            run_command: "./solution",
+            libraries: "標準ライブラリのみ",
+            notes: "通常のネイティブ実行です。",
+        },
+        LanguageGuideItem {
+            name: "Rust",
+            version: format!("rustc {}", versions.rust),
+            source_file: "solution.rs",
+            compile_command: "rustc solution.rs -o solution -C opt-level=2",
+            run_command: "./solution",
+            libraries: "標準ライブラリのみ",
+            notes: "Cargo は使わず、単一ファイルを rustc で直接コンパイルします。",
+        },
+        LanguageGuideItem {
+            name: "Python (CPython)",
+            version: versions.python.clone(),
+            source_file: "solution.py",
+            compile_command: "python3 -m py_compile solution.py",
+            run_command: "python3 solution.py",
+            libraries: "標準ライブラリのみ",
+            notes: "提出前に構文チェックだけ行います。",
+        },
+        LanguageGuideItem {
+            name: "Python (PyPy)",
+            version: versions.pypy.clone(),
+            source_file: "solution.py",
+            compile_command: "pypy3 -m py_compile solution.py",
+            run_command: "pypy3 solution.py",
+            libraries: "標準ライブラリのみ",
+            notes: "提出前に構文チェックだけ行います。",
+        },
+        LanguageGuideItem {
+            name: "Java",
+            version: format!("OpenJDK {}", versions.java),
+            source_file: "Main.java",
+            compile_command: "javac -encoding UTF-8 Main.java",
+            run_command: "java -cp <work_dir> Main",
+            libraries: "標準ライブラリのみ",
+            notes: "クラス名は Main で固定です。",
+        },
+        LanguageGuideItem {
+            name: "Go",
+            version: versions.go.clone(),
+            source_file: "solution.go",
+            compile_command: "go build -o solution solution.go",
+            run_command: "./solution",
+            libraries: "標準ライブラリのみ",
+            notes: "単一ファイルを go build でビルドします。",
+        },
+        LanguageGuideItem {
+            name: "Text",
+            version: format!("cat {}", versions.text),
+            source_file: "solution.txt",
+            compile_command: "なし",
+            run_command: "cat",
+            libraries: "なし",
+            notes: "ソースコードは使わず、標準入力をそのまま標準出力に返します。",
+        },
+    ]
 }
 
 /// 言語バージョン付きセレクトラベルの JSON を構築する
@@ -367,6 +448,23 @@ pub async fn contests_index(
     );
     ctx.insert("contest_id", &Option::<String>::None);
     render(&state.tera, "contests/list.html", ctx)
+}
+
+pub async fn languages(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<Html<String>, HtmlError> {
+    let mut ctx = Context::new();
+    ctx.insert(
+        "current_user",
+        &current_username(&session, &state.pool).await,
+    );
+    ctx.insert("contest_id", &Option::<String>::None);
+    ctx.insert(
+        "languages",
+        &build_language_guide_items(&state.lang_versions),
+    );
+    render(&state.tera, "languages.html", ctx)
 }
 
 // ---- コンテスト詳細（→ 問題一覧へリダイレクト） ----

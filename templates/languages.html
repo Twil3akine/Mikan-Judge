@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}提出言語 | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1.5rem">
+  <h1 style="margin-bottom:.35rem">提出言語について</h1>
+  <p style="color:var(--muted);margin:0">
+    各言語のバージョン、保存ファイル名、コンパイルコマンド、実行コマンド、ライブラリ制約をまとめています。
+  </p>
+</div>
+
+<div class="card" style="margin-bottom:1rem">
+  <p style="margin:0;color:var(--muted)">
+    すべての言語で外部ライブラリは未対応です。必要に応じてこのページに追記します。
+  </p>
+</div>
+
+{% for lang in languages %}
+<details class="card" style="margin-bottom:1rem">
+  <summary style="cursor:pointer;font-weight:700;font-size:1.05rem">
+    {{ lang.name }} / {{ lang.version }}
+  </summary>
+  <div style="margin-top:1rem;display:grid;gap:.85rem">
+    <div>
+      <div style="font-weight:700;margin-bottom:.2rem">保存ファイル名</div>
+      <code>{{ lang.source_file }}</code>
+    </div>
+    <div>
+      <div style="font-weight:700;margin-bottom:.2rem">コンパイルコマンド</div>
+      <pre class="code-block" style="margin:0"><code>{{ lang.compile_command }}</code></pre>
+    </div>
+    <div>
+      <div style="font-weight:700;margin-bottom:.2rem">実行コマンド</div>
+      <pre class="code-block" style="margin:0"><code>{{ lang.run_command }}</code></pre>
+    </div>
+    <div>
+      <div style="font-weight:700;margin-bottom:.2rem">外部ライブラリ</div>
+      <span style="color:var(--muted)">{{ lang.libraries }}</span>
+    </div>
+    <div>
+      <div style="font-weight:700;margin-bottom:.2rem">補足</div>
+      <span style="color:var(--muted)">{{ lang.notes }}</span>
+    </div>
+  </div>
+</details>
+{% endfor %}
+{% endblock %}
