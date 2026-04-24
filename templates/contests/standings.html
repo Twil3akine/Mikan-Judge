@@ -49,9 +49,11 @@
         </td>
         {% for pc in row.problems %}
         <td style="text-align:center">
-          {% if pc.ac_time %}
+          {% if pc.has_result %}
           <div style="color:var(--ac);font-weight:600">{{ pc.score }}</div>
+          {% if pc.ac_time %}
           <div style="color:var(--muted);font-size:.75rem;margin-top:.1rem">{{ pc.ac_time }}</div>
+          {% endif %}
           {% else %}
           <span style="color:var(--muted)">—</span>
           {% endif %}

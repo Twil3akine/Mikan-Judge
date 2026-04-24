@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -14,9 +14,15 @@ pub struct ProblemMeta {
     pub score: u64,
 }
 
-fn default_time_limit() -> u64 { 2000 }
-fn default_memory_limit() -> u64 { 262144 }
-fn default_score() -> u64 { 100 }
+fn default_time_limit() -> u64 {
+    2000
+}
+fn default_memory_limit() -> u64 {
+    262144
+}
+fn default_score() -> u64 {
+    100
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Problem {
@@ -28,12 +34,16 @@ pub struct Problem {
     pub html_content: String,
     #[serde(skip)]
     pub testcases: Vec<Testcase>,
+    /// ヒューリスティック用スコアラースクリプト（問題ディレクトリの scorer.py）
+    #[serde(skip)]
+    pub scorer_path: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Testcase {
     pub input: String,
-    pub expected: String,
+    /// exact ジャッジ用期待出力。ヒューリスティック問題では None
+    pub expected: Option<String>,
 }
 
 pub fn load_all(problems_dir: &Path) -> Vec<Problem> {
@@ -58,8 +68,7 @@ pub fn load_all(problems_dir: &Path) -> Vec<Problem> {
 pub fn load_one(problems_dir: &Path, id: &str) -> Result<Problem> {
     let dir = problems_dir.join(id);
 
-    let meta: ProblemMeta =
-        toml::from_str(&std::fs::read_to_string(dir.join("meta.toml"))?)?;
+    let meta: ProblemMeta = toml::from_str(&std::fs::read_to_string(dir.join("meta.toml"))?)?;
 
     let md = std::fs::read_to_string(dir.join("statement.md"))?;
     let html_content = markdown_to_html(&md);
@@ -69,6 +78,11 @@ pub fn load_one(problems_dir: &Path, id: &str) -> Result<Problem> {
         bail!("problem '{id}' has no test cases");
     }
 
+    let scorer_path = {
+        let p = dir.join("scorer.py");
+        if p.exists() { Some(p) } else { None }
+    };
+
     Ok(Problem {
         id: id.to_string(),
         title: meta.title,
@@ -77,11 +91,12 @@ pub fn load_one(problems_dir: &Path, id: &str) -> Result<Problem> {
         score: meta.score,
         html_content,
         testcases,
+        scorer_path,
     })
 }
 
 fn markdown_to_html(md: &str) -> String {
-    use pulldown_cmark::{html, Options, Parser};
+    use pulldown_cmark::{Options, Parser, html};
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_TABLES);
     opts.insert(Options::ENABLE_STRIKETHROUGH);
@@ -105,14 +120,14 @@ fn load_testcases(dir: &Path) -> Result<Vec<Testcase>> {
     in_files
         .iter()
         .filter_map(|in_path| {
+            let input = std::fs::read_to_string(in_path).ok()?;
             let out_path = in_path.with_extension("out");
-            if out_path.exists() {
-                let input = std::fs::read_to_string(in_path).ok()?;
-                let expected = std::fs::read_to_string(&out_path).ok()?;
-                Some(Ok(Testcase { input, expected }))
+            let expected = if out_path.exists() {
+                std::fs::read_to_string(&out_path).ok()
             } else {
                 None
-            }
+            };
+            Some(Ok(Testcase { input, expected }))
         })
         .collect()
 }

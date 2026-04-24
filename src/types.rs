@@ -100,10 +100,18 @@ pub struct LanguageVersions {
 impl LanguageVersions {
     pub async fn detect() -> Self {
         Self {
-            cpp:    detect_version("g++",    &["--version"]).await.unwrap_or_else(|| "?".into()),
-            rust:   detect_version("rustc",  &["--version"]).await.unwrap_or_else(|| "?".into()),
-            python: detect_version("python3", &["--version"]).await.unwrap_or_else(|| "?".into()),
-            pypy:   detect_version("pypy3",  &["--version"]).await.unwrap_or_else(|| "?".into()),
+            cpp: detect_version("g++", &["--version"])
+                .await
+                .unwrap_or_else(|| "?".into()),
+            rust: detect_version("rustc", &["--version"])
+                .await
+                .unwrap_or_else(|| "?".into()),
+            python: detect_version("python3", &["--version"])
+                .await
+                .unwrap_or_else(|| "?".into()),
+            pypy: detect_version("pypy3", &["--version"])
+                .await
+                .unwrap_or_else(|| "?".into()),
         }
     }
 }
@@ -127,24 +135,28 @@ async fn detect_version(cmd: &str, args: &[&str]) -> Option<String> {
 fn parse_version(cmd: &str, line: &str) -> String {
     match cmd {
         // "Python 3.13.1" → "3.13.1"
-        "python3" | "pypy3" => line
-            .split_whitespace()
-            .nth(1)
-            .unwrap_or(line)
-            .to_string(),
+        "python3" | "pypy3" => line.split_whitespace().nth(1).unwrap_or(line).to_string(),
         // "rustc 1.82.0 (f6e511eec 2024-10-15)" → "1.82.0"
-        "rustc" => line
-            .split_whitespace()
-            .nth(1)
-            .unwrap_or(line)
-            .to_string(),
+        "rustc" => line.split_whitespace().nth(1).unwrap_or(line).to_string(),
         // "g++ (Homebrew GCC 14.2.0...) 14.2.0" or "g++ (GCC) 14.2.0" → last word
-        "g++" => line
-            .split_whitespace()
-            .last()
-            .unwrap_or(line)
-            .to_string(),
+        "g++" => line.split_whitespace().last().unwrap_or(line).to_string(),
         _ => line.to_string(),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum JudgeType {
+    Exact,
+    Heuristic,
+}
+
+impl JudgeType {
+    pub fn from_db(s: &str) -> Self {
+        match s {
+            "heuristic" => JudgeType::Heuristic,
+            _ => JudgeType::Exact,
+        }
     }
 }
 
@@ -160,6 +172,7 @@ impl JudgeStatus {
             JudgeStatus::RuntimeError { .. } => "runtime_error",
             JudgeStatus::CompileError { .. } => "compile_error",
             JudgeStatus::InternalError { .. } => "internal_error",
+            JudgeStatus::Scored => "scored",
         }
     }
 
@@ -171,8 +184,13 @@ impl JudgeStatus {
             "time_limit_exceeded" => JudgeStatus::TimeLimitExceeded,
             "memory_limit_exceeded" => JudgeStatus::MemoryLimitExceeded,
             "runtime_error" => JudgeStatus::RuntimeError { exit_code: -1 },
-            "compile_error" => JudgeStatus::CompileError { message: String::new() },
-            "internal_error" => JudgeStatus::InternalError { message: String::new() },
+            "compile_error" => JudgeStatus::CompileError {
+                message: String::new(),
+            },
+            "internal_error" => JudgeStatus::InternalError {
+                message: String::new(),
+            },
+            "scored" => JudgeStatus::Scored,
             _ => JudgeStatus::Pending,
         }
     }
@@ -187,9 +205,17 @@ pub enum JudgeStatus {
     WrongAnswer,
     TimeLimitExceeded,
     MemoryLimitExceeded,
-    RuntimeError { exit_code: i32 },
-    CompileError { message: String },
-    InternalError { message: String },
+    RuntimeError {
+        exit_code: i32,
+    },
+    CompileError {
+        message: String,
+    },
+    InternalError {
+        message: String,
+    },
+    /// ヒューリスティック: エラーなく実行完了（スコアは submissions.score に保存）
+    Scored,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -215,6 +241,8 @@ pub struct Submission {
     pub stderr: Option<String>,
     /// 各テストケースの判定結果（verdict・実行時間・メモリ）
     pub testcase_results: Option<Vec<TestcaseVerdict>>,
+    /// ヒューリスティック: テストケーススコアの合計
+    pub score: Option<f64>,
 }
 
 /// テストケース1件の実行結果
@@ -223,6 +251,9 @@ pub struct TestcaseVerdict {
     pub verdict: String,
     pub time_ms: Option<u64>,
     pub memory_kb: Option<u64>,
+    /// ヒューリスティック: このケースのスコア
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,15 +275,15 @@ impl ContestStatus {
     pub fn label(&self) -> &'static str {
         match self {
             ContestStatus::Upcoming => "予定",
-            ContestStatus::Ongoing  => "開催中",
-            ContestStatus::Past     => "終了",
+            ContestStatus::Ongoing => "開催中",
+            ContestStatus::Past => "終了",
         }
     }
     pub fn badge_class(&self) -> &'static str {
         match self {
             ContestStatus::Upcoming => "pending",
-            ContestStatus::Ongoing  => "ac",
-            ContestStatus::Past     => "ce",
+            ContestStatus::Ongoing => "ac",
+            ContestStatus::Past => "ce",
         }
     }
 }
@@ -264,6 +295,7 @@ pub struct Contest {
     pub description: String,
     pub start_time: DateTime<Utc>,
     pub end_time: DateTime<Utc>,
+    pub judge_type: JudgeType,
 }
 
 impl Contest {

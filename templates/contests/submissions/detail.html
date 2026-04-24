@@ -30,7 +30,9 @@
     {% if memory_used_kb %}
     <span>メモリ: <b>{{ memory_used_kb }} KB</b></span>
     {% endif %}
-    {% if is_accepted and problem_score %}
+    {% if is_scored and submission_score %}
+    <span>スコア: <b style="color:var(--ac)">{{ submission_score }}</b></span>
+    {% elif is_accepted and problem_score %}
     <span>得点: <b style="color:var(--ac)">{{ problem_score }} 点</b></span>
     {% endif %}
   </div>
@@ -41,7 +43,7 @@
   <h2 style="margin-top:0">テストケース別結果</h2>
   <table>
     <thead>
-      <tr><th>#</th><th>結果</th><th>実行時間</th><th>メモリ</th></tr>
+      <tr><th>#</th><th>結果</th><th>スコア</th><th>実行時間</th><th>メモリ</th></tr>
     </thead>
     <tbody>
       {% for v in testcase_results %}
@@ -53,9 +55,13 @@
           {% elif v.verdict == "TLE" %}<span class="badge badge-tle">TLE</span>
           {% elif v.verdict == "MLE" %}<span class="badge badge-mle">MLE</span>
           {% elif v.verdict == "RE" %}<span class="badge badge-re">RE</span>
+          {% elif v.verdict == "SCORED" %}<span class="badge badge-ac">Scored</span>
           {% elif v.verdict == "--" %}<span class="badge badge-pending">--</span>
           {% else %}<span class="badge badge-ce">{{ v.verdict }}</span>
           {% endif %}
+        </td>
+        <td style="color:var(--muted);font-size:.875rem">
+          {% if v.score is defined %}{{ v.score }}{% else %}-{% endif %}
         </td>
         <td style="color:var(--muted);font-size:.875rem">
           {% if v.time_ms %}{{ v.time_ms }} ms{% else %}-{% endif %}
