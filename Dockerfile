@@ -30,6 +30,9 @@ COPY src        ./src
 COPY migrations ./migrations
 RUN cargo build --release --locked
 
+FROM eclipse-temurin:25-jdk-jammy AS java-toolchain
+FROM golang:1.26.2-bookworm AS go-toolchain
+
 # ============================================================
 # Stage 2: runtime
 #   judge が提出コードをコンパイル・実行するために必要なツールを
@@ -63,9 +66,12 @@ RUN case "${TARGETARCH}" in \
 
 # Rust 提出のコンパイル用: builder の rustup / cargo をそのままコピー
 # （apt の rustc はバージョンが古いため builder のものを流用する）
+ENV JAVA_HOME=/opt/java/openjdk
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
-ENV PATH="/usr/local/cargo/bin:$PATH"
+ENV PATH="/opt/java/openjdk/bin:/usr/local/go/bin:/usr/local/cargo/bin:$PATH"
+COPY --from=java-toolchain /opt/java/openjdk /opt/java/openjdk
+COPY --from=go-toolchain /usr/local/go /usr/local/go
 COPY --from=builder /usr/local/rustup /usr/local/rustup
 COPY --from=builder /usr/local/cargo  /usr/local/cargo
 

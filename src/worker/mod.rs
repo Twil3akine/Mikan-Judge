@@ -124,7 +124,7 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
         time_limit: Duration::from_millis(job.time_limit_ms),
         max_output_bytes: 16 * 1024 * 1024,
         // インタプリタ言語は仮想メモリ制限なし（インタプリタ自体が大量の VA を使うため）
-        vm_limit_bytes: if job.language.is_interpreted() {
+        vm_limit_bytes: if job.language.needs_unlimited_vm() {
             None
         } else {
             Some(mem * 2)

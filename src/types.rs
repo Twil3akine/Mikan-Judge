@@ -9,6 +9,9 @@ pub enum Language {
     Rust,
     Python,
     PyPy,
+    Java,
+    Go,
+    Text,
 }
 
 impl Language {
@@ -18,6 +21,9 @@ impl Language {
             Language::Rust => "rust",
             Language::Python => "python",
             Language::PyPy => "pypy",
+            Language::Java => "java",
+            Language::Go => "go",
+            Language::Text => "text",
         }
     }
 
@@ -26,15 +32,10 @@ impl Language {
             "rust" => Language::Rust,
             "python" => Language::Python,
             "pypy" => Language::PyPy,
+            "java" => Language::Java,
+            "go" => Language::Go,
+            "text" => Language::Text,
             _ => Language::Cpp,
-        }
-    }
-
-    pub fn extension(&self) -> &'static str {
-        match self {
-            Language::Cpp => "cpp",
-            Language::Rust => "rs",
-            Language::Python | Language::PyPy => "py",
         }
     }
 
@@ -44,11 +45,29 @@ impl Language {
             Language::Rust => format!("Rust ({})", versions.rust),
             Language::Python => format!("Python (CPython {})", versions.python),
             Language::PyPy => format!("Python (PyPy {})", versions.pypy),
+            Language::Java => format!("Java (OpenJDK {})", versions.java),
+            Language::Go => format!("Go ({})", versions.go),
+            Language::Text => format!("Text ({})", versions.text),
         }
     }
 
     pub fn is_interpreted(&self) -> bool {
         matches!(self, Language::Python | Language::PyPy)
+    }
+
+    pub fn needs_unlimited_vm(&self) -> bool {
+        matches!(self, Language::Python | Language::PyPy | Language::Java)
+    }
+
+    pub fn source_file_name(&self) -> &'static str {
+        match self {
+            Language::Java => "Main.java",
+            Language::Text => "solution.txt",
+            Language::Cpp => "solution.cpp",
+            Language::Rust => "solution.rs",
+            Language::Python | Language::PyPy => "solution.py",
+            Language::Go => "solution.go",
+        }
     }
 
     pub fn interpreter(&self) -> &'static str {
@@ -63,6 +82,8 @@ impl Language {
         match self {
             Language::Cpp => "g++",
             Language::Rust => "rustc",
+            Language::Java => "javac",
+            Language::Go => "go",
             _ => panic!("not a compiled language"),
         }
     }
@@ -83,6 +104,17 @@ impl Language {
                 "-C".to_string(),
                 "opt-level=2".to_string(),
             ],
+            Language::Java => vec![
+                "-encoding".to_string(),
+                "UTF-8".to_string(),
+                source.to_string(),
+            ],
+            Language::Go => vec![
+                "build".to_string(),
+                "-o".to_string(),
+                output.to_string(),
+                source.to_string(),
+            ],
             _ => panic!("not a compiled language"),
         }
     }
@@ -95,6 +127,9 @@ pub struct LanguageVersions {
     pub rust: String,
     pub python: String,
     pub pypy: String,
+    pub java: String,
+    pub go: String,
+    pub text: String,
 }
 
 impl LanguageVersions {
@@ -112,6 +147,13 @@ impl LanguageVersions {
             pypy: detect_version("pypy3", &["--version"])
                 .await
                 .unwrap_or_else(|| "?".into()),
+            java: detect_version("javac", &["--version"])
+                .await
+                .unwrap_or_else(|| "?".into()),
+            go: detect_version("go", &["version"])
+                .await
+                .unwrap_or_else(|| "?".into()),
+            text: "builtin echo".into(),
         }
     }
 }
@@ -159,6 +201,25 @@ fn parse_version(cmd: &str, raw: &str) -> String {
             .split_whitespace()
             .nth(1)
             .unwrap_or(raw.trim())
+            .to_string(),
+        // "javac 21.0.8" → "21.0.8"
+        "javac" => raw
+            .lines()
+            .next()
+            .unwrap_or(raw)
+            .split_whitespace()
+            .nth(1)
+            .unwrap_or(raw.trim())
+            .to_string(),
+        // "go version go1.24.2 darwin/arm64" → "1.24.2"
+        "go" => raw
+            .lines()
+            .next()
+            .unwrap_or(raw)
+            .split_whitespace()
+            .nth(2)
+            .unwrap_or(raw.trim())
+            .trim_start_matches("go")
             .to_string(),
         // "g++ (Homebrew GCC 14.2.0...) 14.2.0" or "g++ (GCC) 14.2.0" → last word
         "g++" => raw
