@@ -42,12 +42,12 @@ impl Language {
     pub fn display_name_versioned(&self, versions: &LanguageVersions) -> String {
         match self {
             Language::Cpp => format!("C++17 (GCC {})", versions.cpp),
-            Language::Rust => format!("Rust ({})", versions.rust),
+            Language::Rust => format!("Rust (rustc {})", versions.rust),
             Language::Python => format!("Python (CPython {})", versions.python),
             Language::PyPy => format!("Python (PyPy {})", versions.pypy),
             Language::Java => format!("Java (OpenJDK {})", versions.java),
             Language::Go => format!("Go ({})", versions.go),
-            Language::Text => format!("Text ({})", versions.text),
+            Language::Text => format!("Text (cat {})", versions.text),
         }
     }
 
@@ -153,9 +153,16 @@ impl LanguageVersions {
             go: detect_version("go", &["version"])
                 .await
                 .unwrap_or_else(|| "?".into()),
-            text: "builtin echo".into(),
+            text: detect_text_version().await.unwrap_or_else(|| "unknown".into()),
         }
     }
+}
+
+async fn detect_text_version() -> Option<String> {
+    if let Some(version) = detect_version("cat", &["--version"]).await {
+        return Some(version);
+    }
+    detect_version("gcat", &["--version"]).await
 }
 
 async fn detect_version(cmd: &str, args: &[&str]) -> Option<String> {
@@ -220,6 +227,15 @@ fn parse_version(cmd: &str, raw: &str) -> String {
             .nth(2)
             .unwrap_or(raw.trim())
             .trim_start_matches("go")
+            .to_string(),
+        // "cat (GNU coreutils) 9.7" → "9.7"
+        "cat" => raw
+            .lines()
+            .next()
+            .unwrap_or(raw)
+            .split_whitespace()
+            .last()
+            .unwrap_or(raw.trim())
             .to_string(),
         // "g++ (Homebrew GCC 14.2.0...) 14.2.0" or "g++ (GCC) 14.2.0" → last word
         "g++" => raw

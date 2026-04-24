@@ -190,6 +190,7 @@
         devShells.default = pkgs.mkShell {
           buildInputs = [
             rustToolchain
+            pkgs.coreutils
             pkgs.gcc
             pkgs.gdb
             pkgs.pkg-config
