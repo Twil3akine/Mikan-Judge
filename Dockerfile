@@ -6,7 +6,7 @@
 #   rust-overlay が管理するツールチェーンをそのままコピーすることで
 #   Runtime stage でも同一バージョンの rustc を使える。
 # ============================================================
-FROM rust:1.94-bookworm AS builder
+FROM rust:1.94.1-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \

@@ -13,7 +13,7 @@
         overlays = [ (import rust-overlay) ];
         pkgs     = import nixpkgs { inherit system overlays; };
 
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+        rustToolchain = pkgs.rust-bin.stable."1.94.1".default.override {
           extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
         };
 
@@ -156,7 +156,7 @@
               pkgs.gcc                           # C++ 提出のコンパイル
               pkgs.python3                        # Python 提出の実行
               pkgs.pypy3                          # PyPy 提出の実行
-              pkgs.rust-bin.stable.latest.default # Rust 提出のコンパイル
+              pkgs.rust-bin.stable."1.94.1".default # Rust 提出のコンパイル
               pkgs.libseccomp
               pkgs.cacert
             ];
@@ -176,7 +176,7 @@
                   pkgs.gcc
                   pkgs.python3
                   pkgs.pypy3
-                  pkgs.rust-bin.stable.latest.default
+                  pkgs.rust-bin.stable."1.94.1".default
                 ]}"
               ];
             };
