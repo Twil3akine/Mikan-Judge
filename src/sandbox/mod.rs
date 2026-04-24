@@ -18,6 +18,10 @@ pub struct SandboxConfig {
     pub max_output_bytes: usize,
     /// RLIMIT_AS の上限。None = 制限なし（インタプリタ言語向け）
     pub vm_limit_bytes: Option<u64>,
+    /// `RLIMIT_NPROC` の上限。None = 制限しない
+    pub nproc_limit: Option<u64>,
+    /// Java / Go など seccomp ホワイトリストとの差分が大きいランタイムでは無効化する
+    pub enable_seccomp: bool,
 }
 
 /// `compile()` の結果

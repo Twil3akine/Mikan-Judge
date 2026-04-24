@@ -59,6 +59,14 @@ impl Language {
         matches!(self, Language::Python | Language::PyPy | Language::Java)
     }
 
+    pub fn needs_relaxed_seccomp(&self) -> bool {
+        matches!(self, Language::Java | Language::Go | Language::Text)
+    }
+
+    pub fn needs_relaxed_nproc(&self) -> bool {
+        matches!(self, Language::Java | Language::Go)
+    }
+
     pub fn source_file_name(&self) -> &'static str {
         match self {
             Language::Java => "Main.java",

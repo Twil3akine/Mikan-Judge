@@ -129,6 +129,12 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
         } else {
             Some(mem * 2)
         },
+        nproc_limit: if job.language.needs_relaxed_nproc() {
+            None
+        } else {
+            Some(1)
+        },
+        enable_seccomp: !job.language.needs_relaxed_seccomp(),
     };
 
     let is_heuristic = job.judge_type == JudgeType::Heuristic;

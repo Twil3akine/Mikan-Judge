@@ -113,8 +113,10 @@ fn child_exec(
     let fsize: u64 = 16 * 1024 * 1024;
     set_rlimit(libc::RLIMIT_FSIZE as _, fsize, fsize);
 
-    // プロセス数: 1（fork 爆弾対策。ただし root では効かないので注意）
-    set_rlimit(libc::RLIMIT_NPROC as _, 1, 1);
+    // プロセス数制限。Go / Java ランタイムは内部スレッドを使うため緩和する。
+    if let Some(nproc) = config.nproc_limit {
+        set_rlimit(libc::RLIMIT_NPROC as _, nproc, nproc);
+    }
 
     // ---- 名前空間分離 ----
 
@@ -129,15 +131,17 @@ fn child_exec(
     // ---- seccomp: システムコール制限 ----
     // non-linux では apply_filter() が Ok(()) を返すだけなので常に呼んでよい
 
-    if let Err(e) = super::seccomp::apply_filter() {
-        let msg = format!("seccomp setup failed: {e}\n");
-        unsafe {
-            libc::write(
-                libc::STDERR_FILENO,
-                msg.as_ptr() as *const libc::c_void,
-                msg.len(),
-            );
-            libc::_exit(1);
+    if config.enable_seccomp {
+        if let Err(e) = super::seccomp::apply_filter() {
+            let msg = format!("seccomp setup failed: {e}\n");
+            unsafe {
+                libc::write(
+                    libc::STDERR_FILENO,
+                    msg.as_ptr() as *const libc::c_void,
+                    msg.len(),
+                );
+                libc::_exit(1);
+            }
         }
     }
 
