@@ -286,8 +286,14 @@ fn determine_status(
     }
 }
 
+#[cfg(target_os = "linux")]
+type RlimitResource = libc::__rlimit_resource_t;
+
+#[cfg(not(target_os = "linux"))]
+type RlimitResource = libc::c_int;
+
 /// libc::setrlimit ラッパー（nix の Rlim 型に依存しない）
-fn set_rlimit(resource: libc::c_int, soft: u64, hard: u64) {
+fn set_rlimit(resource: RlimitResource, soft: u64, hard: u64) {
     let limit = libc::rlimit {
         rlim_cur: soft as libc::rlim_t,
         rlim_max: hard as libc::rlim_t,

@@ -46,6 +46,15 @@ dev            # Docker で PostgreSQL 起動 → マイグレーション → c
 
 サーバは `http://localhost:3000` で起動します。停止は `Ctrl+C`（PostgreSQL コンテナも自動停止）。
 
+Linux 本番に近い環境で judge まで含めて動かしたい場合は、こちらを使います。
+
+```bash
+dev-docker     # Docker で judge + PostgreSQL を起動
+```
+
+こちらは `docker compose up --build` でアプリ本体も Linux コンテナ内で実行します。
+実行時間・メモリの確認は `dev` より `dev-docker` の方が本番に近いです。
+
 ### 個別コマンド
 
 ```bash
