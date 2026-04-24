@@ -60,6 +60,10 @@
           sqlx migrate run --database-url "$DATABASE_URL"
         '';
 
+        judgeSmokeTest = pkgs.writeShellScriptBin "judge-smoke-test" ''
+          cargo test smoke_aplusb_across_languages -- --nocapture
+        '';
+
         devDocker = pkgs.writeShellScriptBin "dev-docker" ''
           export PATH="/usr/local/bin:$HOME/.orbstack/bin:$PATH"
           start_time="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -202,6 +206,7 @@
             pkgs.python3
             pkgs.pypy3
             dbMigrate
+            judgeSmokeTest
             dev
             devDocker
           ] ++ linuxPkgs;
@@ -222,6 +227,7 @@
             echo ""
             echo "Start: dev"
             echo "Linux Docker judge: dev-docker"
+            echo "Smoke test: judge-smoke-test"
 
             # PostgreSQL は Docker コンテナで動かす（docker-compose.yml の db サービス）
             # POSTGRES_PASSWORD が未設定の場合は開発用デフォルト値をシェル側で設定する
