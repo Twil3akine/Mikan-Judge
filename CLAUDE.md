@@ -97,6 +97,11 @@ src/
 - `CompileOutput { executable, run_args, error, warnings }`
   - インタープリタ言語: `executable = /path/to/python3`, `run_args = [source_path]`
 - `run_in_sandbox(executable, run_args, stdin, config) -> Result<RunResult>`
+- `#[tokio::test] smoke_aplusb_across_languages()`
+  - `aplusb` の先頭ケースを使うスモークテスト
+  - 各言語ごとに最小の `A+B` プログラムをその場で生成して `compile()` と `run_in_sandbox()` を通す
+  - `cpp`, `rust`, `python`, `pypy`, `java`, `go` は AC 相当を期待
+  - `text` は stdin をそのまま返すので WA 相当を期待
 - `RunResult { stdout, stderr, exit_code, cpu_time_used, memory_used_bytes, status }`
   - `cpu_time_used`: `wait4(pid, &rusage)` から ru_utime + ru_stime で計測（RUSAGE_CHILDREN は累積するため使わない）
   - `memory_used_bytes`: `ru_maxrss` から取得（macOS は bytes、Linux は KB 単位）
@@ -147,6 +152,7 @@ problems/<id>/
   - 終了時（Ctrl+C）に `docker compose stop db` を自動実行
   - OrbStack / Docker Desktop の `docker` を `/usr/local/bin` 経由で使用（pkgs.docker は不使用）
 - `db-migrate`: `sqlx migrate run` を実行（DATABASE_URL は shellHook で自動設定済み）
+- `judge-smoke-test`: `cargo test smoke_aplusb_across_languages -- --nocapture` を実行
 - Python: `pkgs.python3` (CPython), `pkgs.pypy3` (PyPy) が buildInputs に含まれる
 - macOS では dyld/ObjC ランタイムの起動コストにより実行時間が大きく見える（C++でも~50ms）。正確な計測は Linux（本番 Docker 等）が必要。
 

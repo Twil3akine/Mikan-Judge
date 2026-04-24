@@ -115,10 +115,11 @@ pub async fn compile(
             warnings,
         })
     } else if matches!(language, Language::Java) {
+        let compiler = resolve_command(language.compiler()).await?;
         let args = language.compile_args(src_path.to_str().unwrap(), "");
         let result = timeout(
             Duration::from_secs(30),
-            Command::new(language.compiler())
+            Command::new(&compiler)
                 .current_dir(work_dir)
                 .args(&args)
                 .output(),
@@ -152,12 +153,13 @@ pub async fn compile(
             }
         }
     } else {
+        let compiler = resolve_command(language.compiler()).await?;
         let output_path = work_dir.join("solution");
         let args = language.compile_args(src_path.to_str().unwrap(), output_path.to_str().unwrap());
 
         let result = timeout(
             Duration::from_secs(30),
-            Command::new(language.compiler()).args(&args).output(),
+            Command::new(&compiler).args(&args).output(),
         )
         .await;
 
@@ -227,4 +229,134 @@ pub async fn run_in_sandbox(
         runner::run_sandboxed_blocking(&executable, &run_args, &stdin, &config)
     })
     .await?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RunStatus, SandboxConfig, compile, run_in_sandbox};
+    use crate::problem;
+    use crate::sandbox::resolve_command;
+    use crate::types::Language;
+    use std::time::Duration;
+
+    fn source_for(language: &Language) -> &'static str {
+        match language {
+            Language::Cpp => {
+                "#include <iostream>\nint main(){long long a,b;std::cin>>a>>b;std::cout<<a+b<<\"\\n\";}\n"
+            }
+            Language::Rust => {
+                "use std::io::{self, Read};\nfn main(){let mut s=String::new();io::stdin().read_to_string(&mut s).unwrap();let mut it=s.split_whitespace();let a:i64=it.next().unwrap().parse().unwrap();let b:i64=it.next().unwrap().parse().unwrap();println!(\"{}\",a+b);}\n"
+            }
+            Language::Python => {
+                "a,b=map(int,input().split())\nprint(a+b)\n"
+            }
+            Language::PyPy => {
+                "a,b=map(int,input().split())\nprint(a+b)\n"
+            }
+            Language::Java => {
+                "import java.util.Scanner;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        long a = sc.nextLong();\n        long b = sc.nextLong();\n        System.out.println(a + b);\n        sc.close();\n    }\n}\n"
+            }
+            Language::Go => {
+                "package main\n\nimport \"fmt\"\n\nfunc main() {\n    var a, b int\n    fmt.Scan(&a, &b)\n    fmt.Println(a + b)\n}\n"
+            }
+            Language::Text => "5\n",
+        }
+    }
+
+    fn sandbox_config(language: &Language, memory_limit_kb: u64, time_limit_ms: u64) -> SandboxConfig {
+        let mem = memory_limit_kb * 1024;
+        SandboxConfig {
+            time_limit: Duration::from_millis(time_limit_ms),
+            max_output_bytes: 16 * 1024 * 1024,
+            vm_limit_bytes: if language.needs_unlimited_vm() {
+                None
+            } else {
+                Some(mem * 2)
+            },
+            nproc_limit: if language.needs_relaxed_nproc() {
+                None
+            } else {
+                Some(1)
+            },
+            enable_seccomp: !language.needs_relaxed_seccomp(),
+        }
+    }
+
+    #[tokio::test]
+    async fn smoke_aplusb_across_languages() {
+        let required = ["g++", "rustc", "python3", "pypy3", "javac", "java", "go", "cat"];
+        for command in required {
+            if resolve_command(command).await.is_err() {
+                eprintln!("skip smoke_aplusb_across_languages: command '{command}' not found in PATH");
+                return;
+            }
+        }
+
+        let problem = problem::load_one(std::path::Path::new("problems"), "aplusb")
+            .expect("failed to load aplusb");
+        let testcase = problem
+            .testcases
+            .first()
+            .expect("aplusb should have at least one testcase");
+        let expected = testcase.expected.as_deref().expect("exact testcase should have expected output");
+
+        let languages = [
+            Language::Cpp,
+            Language::Rust,
+            Language::Python,
+            Language::PyPy,
+            Language::Java,
+            Language::Go,
+            Language::Text,
+        ];
+
+        for language in languages {
+            let work_dir = tempfile::tempdir().expect("failed to create tempdir");
+            let compiled = compile(source_for(&language), &language, work_dir.path())
+                .await
+                .unwrap_or_else(|e| panic!("{language:?}: compile step failed: {e}"));
+
+            assert!(
+                compiled.error.is_none(),
+                "{language:?}: compile error: {}",
+                compiled.error.unwrap_or_default()
+            );
+
+            let run = run_in_sandbox(
+                &compiled.executable,
+                compiled.run_args,
+                testcase.input.as_bytes(),
+                sandbox_config(
+                    &language,
+                    problem.memory_limit_kb,
+                    problem.time_limit_ms,
+                ),
+            )
+            .await
+            .unwrap_or_else(|e| panic!("{language:?}: run failed: {e}"));
+
+            assert!(
+                matches!(run.status, RunStatus::Ok),
+                "{language:?}: unexpected run status: {:?}, stderr={}",
+                run.status,
+                String::from_utf8_lossy(&run.stderr)
+            );
+
+            let stdout = String::from_utf8_lossy(&run.stdout);
+            if matches!(language, Language::Text) {
+                assert_ne!(
+                    stdout.trim(),
+                    expected.trim(),
+                    "Text should not solve aplusb by echoing stdin"
+                );
+            } else {
+                assert_eq!(
+                    stdout.trim(),
+                    expected.trim(),
+                    "{language:?}: unexpected stdout, stderr={}",
+                    String::from_utf8_lossy(&run.stderr)
+                );
+            }
+        }
+    }
 }

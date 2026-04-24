@@ -81,7 +81,43 @@ pg_start          # DB だけ起動
 cargo watch -x run  # サーバだけ起動（ファイル変更で自動再起動）
 cargo run           # サーバを1回だけ起動
 pg_stop           # DB だけ停止
+judge-smoke-test  # judge の主要言語スモークテスト
 ```
+
+### judge のスモークテスト
+
+言語追加や sandbox 調整のあとに、judge が壊れていないかをまとめて確認するためのコマンドです。
+
+```fish
+judge-smoke-test
+```
+
+内部では `cargo test smoke_aplusb_across_languages -- --nocapture` を実行します。
+`problems/aplusb/` の先頭ケースを使って、以下を確認します。
+
+- `cpp`, `rust`, `python`, `pypy`, `java`, `go` は AC 相当
+- `text` は WA 相当
+
+内部では、各言語向けに最小の `A+B` プログラムをその場で作って、
+`compile()` と `run_in_sandbox()` を通し、1 ケースだけ実行しています。
+なので、少なくとも以下の健全性確認にはなります。
+
+- その言語のツールチェーンが見つかる
+- judge 側のコンパイル手順が壊れていない
+- sandbox 内で実行できる
+- 出力比較まで一通り通る
+
+ただし、これはスモークテストなので、時間制限ぎりぎりのケースや大きいメモリ使用量、
+複数ケース連続実行、Linux 本番相当の厳密な実行時間までは保証しません。
+
+成功時は末尾が次のようになります。
+
+```text
+test sandbox::tests::smoke_aplusb_across_languages ... ok
+test result: ok. 1 passed; 0 failed;
+```
+
+失敗した場合は、どの言語で `compile` または `run` が失敗したかがそのまま表示されます。
 
 ### 動作確認（curl）
 
