@@ -56,7 +56,10 @@ impl Language {
     }
 
     pub fn needs_unlimited_vm(&self) -> bool {
-        matches!(self, Language::Python | Language::PyPy | Language::Java)
+        matches!(
+            self,
+            Language::Python | Language::PyPy | Language::Java | Language::Go
+        )
     }
 
     pub fn needs_relaxed_seccomp(&self) -> bool {
