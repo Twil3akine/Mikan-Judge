@@ -167,7 +167,7 @@ async fn judge(job: JudgeJob, pool: &PgPool) {
             }
         };
 
-        let time_ms = run.cpu_time_used.as_millis() as u64;
+        let time_ms = run.wall_time_used.as_millis() as u64;
         let memory_used_kb = run.memory_used_bytes / 1024;
         if time_ms > max_time_ms {
             max_time_ms = time_ms;

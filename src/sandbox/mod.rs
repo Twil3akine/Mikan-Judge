@@ -36,8 +36,8 @@ pub struct RunResult {
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
     pub exit_code: Option<i32>,
-    /// ru_utime + ru_stime（表示用、スケジューラ揺れを含まない）
-    pub cpu_time_used: Duration,
+    /// 表示用の実行時間。TLE 判定と揃えるため wall time を使う。
+    pub wall_time_used: Duration,
     /// getrusage(RUSAGE_CHILDREN).max_rss から取得（バイト単位）
     pub memory_used_bytes: u64,
     pub status: RunStatus,
@@ -77,8 +77,14 @@ pub async fn compile(
         .await;
 
         let (error, warnings) = match result {
-            Err(_) => (Some("構文チェックがタイムアウトしました".to_string()), String::new()),
-            Ok(Err(e)) => (Some(format!("インタプリタの起動に失敗しました: {e}")), String::new()),
+            Err(_) => (
+                Some("構文チェックがタイムアウトしました".to_string()),
+                String::new(),
+            ),
+            Ok(Err(e)) => (
+                Some(format!("インタプリタの起動に失敗しました: {e}")),
+                String::new(),
+            ),
             Ok(Ok(out)) => {
                 let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
                 if out.status.success() {
@@ -97,10 +103,7 @@ pub async fn compile(
         })
     } else {
         let output_path = work_dir.join("solution");
-        let args = language.compile_args(
-            src_path.to_str().unwrap(),
-            output_path.to_str().unwrap(),
-        );
+        let args = language.compile_args(src_path.to_str().unwrap(), output_path.to_str().unwrap());
 
         let result = timeout(
             Duration::from_secs(30),
@@ -114,21 +117,48 @@ pub async fn compile(
             Ok(Ok(out)) => {
                 let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
                 if out.status.success() {
-                    Ok(CompileOutput { executable: output_path, run_args: vec![], error: None, warnings: stderr })
+                    Ok(CompileOutput {
+                        executable: output_path,
+                        run_args: vec![],
+                        error: None,
+                        warnings: stderr,
+                    })
                 } else {
-                    Ok(CompileOutput { executable: output_path, run_args: vec![], error: Some(stderr), warnings: String::new() })
+                    Ok(CompileOutput {
+                        executable: output_path,
+                        run_args: vec![],
+                        error: Some(stderr),
+                        warnings: String::new(),
+                    })
                 }
             }
         }
     }
 }
 
-/// `which <name>` で絶対パスを解決する。見つからなければエラー。
 async fn resolve_interpreter(name: &str) -> Result<PathBuf> {
+    let path = std::env::var_os("PATH").ok_or_else(|| anyhow::anyhow!("PATH is not set"))?;
+    let candidates: Vec<PathBuf> = std::env::split_paths(&path)
+        .map(|dir| dir.join(name))
+        .filter(|candidate| candidate.is_file())
+        .collect();
+
+    #[cfg(target_os = "macos")]
+    if let Some(found) = candidates
+        .iter()
+        .find(|candidate| !candidate.starts_with("/usr/bin"))
+        .cloned()
+    {
+        return Ok(found);
+    }
+
+    if let Some(found) = candidates.into_iter().next() {
+        return Ok(found);
+    }
+
     let out = Command::new("which").arg(name).output().await?;
     anyhow::ensure!(out.status.success(), "interpreter '{name}' not found in PATH");
-    let path = String::from_utf8(out.stdout)?.trim().to_string();
-    Ok(PathBuf::from(path))
+    Ok(PathBuf::from(String::from_utf8(out.stdout)?.trim()))
 }
 
 /// 実行ファイルをサンドボックス内で実行して結果を返す。
