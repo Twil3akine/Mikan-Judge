@@ -54,6 +54,8 @@ dev-docker     # Docker で judge + PostgreSQL を起動
 
 こちらは `docker compose up --build` でアプリ本体も Linux コンテナ内で実行します。
 実行時間・メモリの確認は `dev` より `dev-docker` の方が本番に近いです。
+`dev-docker` は judge イメージのビルド、DB の起動待ち、judge の疎通確認まで行ったうえで
+judge ログを追尾します。
 
 ### 個別コマンド
 
