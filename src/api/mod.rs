@@ -40,6 +40,7 @@ pub async fn create_router(state: AppState) -> Router {
         .route("/logout",   post(handlers::logout))
         // ---- トップ（ランディング）・コンテスト一覧 ----
         .route("/", get(handlers::index))
+        .route("/languages", get(handlers::languages))
         .route("/contests", get(handlers::contests_index))
         // ---- コンテスト内ルート ----
         .route("/contests/{contest_id}", get(handlers::contest_detail))
