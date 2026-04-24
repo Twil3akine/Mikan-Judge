@@ -64,6 +64,16 @@ dev
 これだけです。DB の起動・サーバの起動（ファイル変更で自動再起動）を一括でやります。
 Ctrl+C で止めると PostgreSQL も自動で止まります。
 
+Hetzner に近い Linux 環境でアプリごと動かしたい場合は、こちらを使います。
+
+```fish
+dev-docker
+```
+
+これは `docker-compose.dev-docker.yml` を重ねて `judge` と `db` の両方を Docker で起動します。
+ローカル macOS 実行より、実行時間・メモリ計測の確認に向いており、メモリは cgroup ベースで計測します。
+起動時には judge イメージのビルド、DB の起動待ち、judge の疎通確認まで自動で行います。
+
 個別に操作したい場合：
 
 ```fish

@@ -7,7 +7,8 @@
 /// - 言語ランタイムによっては追加のシスコールが必要になる場合がある。
 /// - `open` / `openat` はここでは許可しているが、将来的には
 ///   引数フィルタで読み取り専用に制限すべき。
-/// - `execve` は禁止（子プロセスから別バイナリを起動させない）。
+/// - 現状はサンドボックス適用後に `execvp` で提出プログラムを起動するため、
+///   `execve` / `execveat` は許可している。
 
 #[cfg(target_os = "linux")]
 pub fn apply_filter() -> anyhow::Result<()> {
@@ -25,11 +26,18 @@ pub fn apply_filter() -> anyhow::Result<()> {
         "pwrite64",
         // --- ファイルディスクリプタ ---
         "close",
+        "fcntl",
         "fstat",
+        "newfstatat",
         "lseek",
         // ファイルオープン（読み取りのみを想定; 将来は引数でフィルタ）
         "open",
         "openat",
+        "access",
+        "faccessat",
+        "faccessat2",
+        "getdents64",
+        "readlinkat",
         // --- メモリ管理 ---
         "brk",
         "mmap",
@@ -45,10 +53,15 @@ pub fn apply_filter() -> anyhow::Result<()> {
         "rt_sigprocmask",
         "rt_sigreturn",
         "sigaltstack",
+        // --- プロセス起動 ---
+        "execve",
+        "execveat",
         // --- スレッド基盤（std / libstdc++ が使う） ---
         "futex",
         "set_tid_address",
         "set_robust_list",
+        "sched_getaffinity",
+        "rseq",
         "gettid",
         "getpid",
         // --- x86-64 TLS / CRT 初期化 ---
@@ -57,6 +70,8 @@ pub fn apply_filter() -> anyhow::Result<()> {
         "clock_gettime",
         "clock_getres",
         "gettimeofday",
+        "ppoll",
+        "prlimit64",
         // --- エントロピー（Rust std が使う） ---
         "getrandom",
         // --- UID/GID 問い合わせ（一部ランタイムが使う） ---
@@ -65,6 +80,9 @@ pub fn apply_filter() -> anyhow::Result<()> {
         "getgid",
         "getegid",
         // --- その他 ---
+        "getcwd",
+        "sysinfo",
+        "statx",
         "uname",
         "ioctl", // 端末検出に使われることがある
     ];

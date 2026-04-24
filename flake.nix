@@ -60,6 +60,52 @@
           sqlx migrate run --database-url "$DATABASE_URL"
         '';
 
+        devDocker = pkgs.writeShellScriptBin "dev-docker" ''
+          export PATH="/usr/local/bin:$HOME/.orbstack/bin:$PATH"
+          start_time="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          compose_args=(-f docker-compose.yml -f docker-compose.dev-docker.yml)
+
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "ERROR: docker コマンドが見つかりません。OrbStack または Docker Desktop が起動しているか確認してください。"
+            exit 1
+          fi
+
+          if [ -z "$POSTGRES_PASSWORD" ]; then
+            export POSTGRES_PASSWORD="dev"
+          fi
+
+          trap 'echo ""; echo "Stopping services..."; docker compose stop' EXIT INT TERM
+
+          echo "Building judge image..."
+          docker compose "''${compose_args[@]}" build judge
+
+          echo "Starting PostgreSQL container..."
+          docker compose "''${compose_args[@]}" up -d db
+
+          echo "Waiting for database to be ready..."
+          until docker compose "''${compose_args[@]}" exec -T db pg_isready -U mikan -d mikan_judge >/dev/null 2>&1; do
+            sleep 1
+          done
+
+          echo "Starting judge container..."
+          docker compose "''${compose_args[@]}" up -d judge
+
+          echo "Waiting for judge to respond..."
+          until curl --silent --fail "http://localhost:${"\${PORT:-3000}"}/" >/dev/null 2>&1; do
+            sleep 1
+          done
+
+          judge_container_id="$(docker compose "''${compose_args[@]}" ps -q judge)"
+          if [ -z "$judge_container_id" ]; then
+            echo "ERROR: judge コンテナ ID を取得できませんでした。"
+            exit 1
+          fi
+
+          echo "Listening on http://localhost:${"\${PORT:-3000}"}"
+          echo "(Ctrl+C to stop)"
+          docker logs --since "$start_time" -f "$judge_container_id"
+        '';
+
         dev = pkgs.writeShellScriptBin "dev" ''
           # OrbStack / Docker Desktop がインストールした docker を優先する。
           # pkgs.docker（Nix製）はソケットパスを知らないため PATH の先頭に追加。
@@ -150,6 +196,7 @@
             pkgs.pypy3
             dbMigrate
             dev
+            devDocker
           ] ++ linuxPkgs;
 
           PKG_CONFIG_PATH = pkgs.lib.makeSearchPath "lib/pkgconfig" (
@@ -165,6 +212,7 @@
             echo "  PyPy : $(pypy3 --version 2>&1 | tail -1)"
             echo ""
             echo "Start: dev"
+            echo "Linux Docker judge: dev-docker"
 
             # PostgreSQL は Docker コンテナで動かす（docker-compose.yml の db サービス）
             # POSTGRES_PASSWORD が未設定の場合は開発用デフォルト値をシェル側で設定する
