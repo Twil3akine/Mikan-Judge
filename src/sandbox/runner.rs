@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use nix::sys::signal::Signal;
 use nix::sys::wait::WaitStatus;
-use nix::unistd::{fork, ForkResult, Pid};
+use nix::unistd::{ForkResult, Pid, fork};
 
 use super::{RunResult, RunStatus, SandboxConfig};
 
@@ -34,16 +34,12 @@ pub fn run_sandboxed_blocking(
     // SAFETY: fork 後の子プロセスは execve のみ行い、
     //         Rust のランタイムやヒープを触らない。
     match unsafe { fork() }.context("fork(2) failed")? {
-        ForkResult::Child => {
-            child_exec(
-                stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w,
-                executable, run_args, config,
-            )
-        }
+        ForkResult::Child => child_exec(
+            stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w, executable, run_args, config,
+        ),
         ForkResult::Parent { child } => parent_collect(
-            child,
-            stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w,
-            stdin_data, config, start,
+            child, stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w, stdin_data, config,
+            start,
         ),
     }
 }
@@ -111,7 +107,7 @@ fn child_exec(
 
     #[cfg(target_os = "linux")]
     {
-        use nix::sched::{unshare, CloneFlags};
+        use nix::sched::{CloneFlags, unshare};
         // ネットワーク名前空間を分離して外部通信を遮断
         let _ = unshare(CloneFlags::CLONE_NEWNET);
         // CLONE_NEWPID は /proc の再マウントが必要なので後回し
@@ -213,9 +209,7 @@ fn parent_collect(
     loop {
         let mut wstatus: libc::c_int = 0;
         let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
-        let ret = unsafe {
-            libc::wait4(child.as_raw(), &mut wstatus, libc::WNOHANG, &mut ru)
-        };
+        let ret = unsafe { libc::wait4(child.as_raw(), &mut wstatus, libc::WNOHANG, &mut ru) };
 
         if ret == child.as_raw() {
             child_rusage = ru;
@@ -226,9 +220,8 @@ fn parent_collect(
                 let _ = nix::sys::signal::kill(child, Signal::SIGKILL);
                 killed = true;
                 // ブロッキングで回収
-                let ret2 = unsafe {
-                    libc::wait4(child.as_raw(), &mut wstatus, 0, &mut child_rusage)
-                };
+                let ret2 =
+                    unsafe { libc::wait4(child.as_raw(), &mut wstatus, 0, &mut child_rusage) };
                 if ret2 == child.as_raw() {
                     final_status = Some(parse_wait_status(child, wstatus));
                 }
@@ -241,13 +234,6 @@ fn parent_collect(
     }
 
     let time_used = start.elapsed();
-
-    // wait4 から直接取得した値を使う
-    let user_us = child_rusage.ru_utime.tv_sec as u64 * 1_000_000
-        + child_rusage.ru_utime.tv_usec as u64;
-    let sys_us = child_rusage.ru_stime.tv_sec as u64 * 1_000_000
-        + child_rusage.ru_stime.tv_usec as u64;
-    let cpu_time_used = Duration::from_micros(user_us + sys_us);
 
     #[cfg(target_os = "linux")]
     let memory_used_bytes = (child_rusage.ru_maxrss as u64).saturating_mul(1024);
@@ -264,7 +250,7 @@ fn parent_collect(
         stdout,
         stderr,
         exit_code,
-        cpu_time_used,
+        wall_time_used: time_used,
         memory_used_bytes,
         status,
     })
@@ -326,8 +312,7 @@ fn drain_fd(fd: RawFd, max_bytes: usize) -> Vec<u8> {
     let mut buf = vec![0u8; 4096];
     let mut out = Vec::new();
     loop {
-        let n =
-            unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+        let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
         if n <= 0 {
             break;
         }
