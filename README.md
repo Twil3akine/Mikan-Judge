@@ -4,7 +4,7 @@
 
 ## 機能
 
-- C++17 / Rust / Python3 (CPython) / Python3 (PyPy) での提出・ジャッジ
+- C++17 / Rust / Python3 (CPython) / Python3 (PyPy) / Java / Go / Text(入力をそのまま返す) での提出・ジャッジ
 - 全テストケースをジャッジし、ケースごとの AC/WA/TLE/RE を表示
 - fork + exec サンドボックス（rlimit / ネームスペース分離 / seccomp on Linux）
 - htmx によるリアルタイム結果ポーリング

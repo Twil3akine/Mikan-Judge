@@ -6,7 +6,7 @@
 #   rust-overlay が管理するツールチェーンをそのままコピーすることで
 #   Runtime stage でも同一バージョンの rustc を使える。
 # ============================================================
-FROM rust:1.94-bookworm AS builder
+FROM rust:1.94.1-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
@@ -30,32 +30,48 @@ COPY src        ./src
 COPY migrations ./migrations
 RUN cargo build --release --locked
 
+FROM eclipse-temurin:25-jdk-jammy AS java-toolchain
+FROM golang:1.26.2-bookworm AS go-toolchain
+
 # ============================================================
 # Stage 2: runtime
 #   judge が提出コードをコンパイル・実行するために必要なツールを
 #   ランタイムイメージに含める。
 #   rustc は builder の rustup ごとコピーすることでバージョンを固定。
 # ============================================================
-FROM debian:bookworm-slim AS runtime
+FROM python:3.14.4-slim-bookworm AS runtime
+
+ARG TARGETARCH
+ARG PYPY_VERSION=7.3.21
+ARG PYPY_PYTHON_VERSION=3.11
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
     libseccomp2 \
     # C++ 提出のコンパイル
     g++ \
-    # Python 提出の実行
-    python3 \
-    # PyPy 提出の実行
-    pypy3 \
+    curl \
+    bzip2 \
     # resolve_interpreter() が which コマンドを使用する
     debianutils \
     && rm -rf /var/lib/apt/lists/*
 
+RUN case "${TARGETARCH}" in \
+      amd64) pypy_arch="linux64" ;; \
+      arm64) pypy_arch="aarch64" ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://downloads.python.org/pypy/pypy${PYPY_PYTHON_VERSION}-v${PYPY_VERSION}-${pypy_arch}.tar.bz2" \
+      | tar -xj -C /opt \
+    && ln -s "/opt/pypy${PYPY_PYTHON_VERSION}-v${PYPY_VERSION}-${pypy_arch}/bin/pypy3" /usr/local/bin/pypy3
+
 # Rust 提出のコンパイル用: builder の rustup / cargo をそのままコピー
 # （apt の rustc はバージョンが古いため builder のものを流用する）
+ENV JAVA_HOME=/opt/java/openjdk
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
-ENV PATH="/usr/local/cargo/bin:$PATH"
+ENV PATH="/opt/java/openjdk/bin:/usr/local/go/bin:/usr/local/cargo/bin:$PATH"
+COPY --from=java-toolchain /opt/java/openjdk /opt/java/openjdk
+COPY --from=go-toolchain /usr/local/go /usr/local/go
 COPY --from=builder /usr/local/rustup /usr/local/rustup
 COPY --from=builder /usr/local/cargo  /usr/local/cargo
 

@@ -49,6 +49,9 @@
         <option value="rust">{{ lang_labels.rust }}</option>
         <option value="python">{{ lang_labels.python }}</option>
         <option value="pypy">{{ lang_labels.pypy }}</option>
+        <option value="java">{{ lang_labels.java }}</option>
+        <option value="go">{{ lang_labels.go }}</option>
+        <option value="text">{{ lang_labels.text }}</option>
       </select>
     </div>
     <div class="form-group">
@@ -68,6 +71,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/simple.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/go/go.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/rust/rust.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
 <script>
@@ -76,6 +80,9 @@ const LANG_MODES = {
   rust:   'text/x-rustsrc',
   python: 'python',
   pypy:   'python',
+  java:   'text/x-java',
+  go:     'go',
+  text:   null,
 };
 
 let editor;
@@ -99,7 +106,8 @@ function updateEditorMode() {
 
 document.getElementById('submit-form').addEventListener('submit', e => {
   editor.save();
-  if (!document.getElementById('source_code').value.trim()) {
+  const lang = document.getElementById('language').value;
+  if (lang !== 'text' && !document.getElementById('source_code').value.trim()) {
     e.preventDefault();
     alert('ソースコードを入力してください');
   }

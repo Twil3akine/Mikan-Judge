@@ -49,12 +49,12 @@ src/
 ## Key Patterns
 
 ### Language enum (`src/types.rs`)
-- バリアント: `Cpp`, `Rust`, `Python`, `PyPy`
+- バリアント: `Cpp`, `Rust`, `Python`, `PyPy`, `Java`, `Go`, `Text`
 - `is_interpreted()` → コンパイル不要かどうか
 - `interpreter()` → "python3" / "pypy3"
-- `display_name()` → "C++17" / "Rust" / "Python3 (CPython)" / "Python3 (PyPy)"
+- `display_name()` → "C++17" / "Rust" / "Python3 (CPython)" / "Python3 (PyPy)" / "Java" / "Go" / "Text"
 - `to_db()` / `from_db()` → PostgreSQL の文字列表現
-- `extension()` → ソースファイル拡張子
+- `source_file_name()` → judge ワークディレクトリに保存するファイル名
 
 ### Auth & Session
 - パスワードは **argon2 0.5** でハッシュ化し `users.password_hash` に保存
@@ -91,7 +91,9 @@ src/
 ### Sandbox (`src/sandbox/mod.rs`, `runner.rs`)
 - `compile(language, source, work_dir) -> Result<CompileOutput>`
   - インタープリタ言語: `py_compile` で構文チェックのみ、実際にはコンパイルしない
-  - `resolve_interpreter(name)` で `which python3/pypy3` を呼び絶対パスを取得
+  - `Java`: `Main.java` を `javac` でコンパイルし、`java -cp <work_dir> Main` で実行する
+  - `Go`: `go build` でネイティブバイナリを生成する
+  - `Text`: 組み込みの `cat` を使って入力をそのまま返す
 - `CompileOutput { executable, run_args, error, warnings }`
   - インタープリタ言語: `executable = /path/to/python3`, `run_args = [source_path]`
 - `run_in_sandbox(executable, run_args, stdin, config) -> Result<RunResult>`
@@ -200,5 +202,5 @@ docker compose up --build -d
 - seccomp は Linux のみ (`#[cfg(target_os = "linux")]`)
 - `RLIMIT_AS` はインタープリタ言語に対しては設定しない
 - `execvp` を使うことで PATH 経由でインタープリタを解決
-- `resolve_interpreter()` で `which` コマンドを使い絶対パスを取得（macOS の `/usr/bin/python3` スタブ回避）
+- `resolve_command()` で `which` コマンドを使い絶対パスを取得（macOS の `/usr/bin/python3` スタブ回避）
 - macOS の `ru_maxrss` は bytes 単位（Linux は KB 単位）でかつ dyld/ObjC ランタイム分が加算されるため、メモリ計測値が実際より大きく見える

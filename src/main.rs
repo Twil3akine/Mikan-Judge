@@ -42,6 +42,7 @@ async fn main() {
     tracing::info!(
         cpp = %lang_versions.cpp, rust = %lang_versions.rust,
         python = %lang_versions.python, pypy = %lang_versions.pypy,
+        java = %lang_versions.java, go = %lang_versions.go, text = %lang_versions.text,
         "detected language versions"
     );
 

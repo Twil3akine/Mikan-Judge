@@ -148,6 +148,9 @@ fn build_lang_labels(versions: &crate::types::LanguageVersions) -> serde_json::V
         "rust":   Language::Rust.display_name_versioned(versions),
         "python": Language::Python.display_name_versioned(versions),
         "pypy":   Language::PyPy.display_name_versioned(versions),
+        "java":   Language::Java.display_name_versioned(versions),
+        "go":     Language::Go.display_name_versioned(versions),
+        "text":   Language::Text.display_name_versioned(versions),
     })
 }
 
@@ -710,6 +713,7 @@ pub async fn contest_submission_detail(
 
     let lang_hljs = match sub.language.to_db() {
         "pypy" => "python",
+        "text" => "plaintext",
         other => other,
     };
 
@@ -1181,6 +1185,7 @@ pub async fn submissions_detail(
 
     let lang_hljs = match sub.language.to_db() {
         "pypy" => "python",
+        "text" => "plaintext",
         other => other,
     };
 

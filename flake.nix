@@ -13,7 +13,7 @@
         overlays = [ (import rust-overlay) ];
         pkgs     = import nixpkgs { inherit system overlays; };
 
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+        rustToolchain = pkgs.rust-bin.stable."1.94.1".default.override {
           extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
         };
 
@@ -154,9 +154,11 @@
               pkgs.bashInteractive
               pkgs.which
               pkgs.gcc                           # C++ 提出のコンパイル
+              pkgs.jdk25_headless               # Java 提出のコンパイル・実行
+              pkgs.go_1_26                      # Go 提出のコンパイル
               pkgs.python3                        # Python 提出の実行
               pkgs.pypy3                          # PyPy 提出の実行
-              pkgs.rust-bin.stable.latest.default # Rust 提出のコンパイル
+              pkgs.rust-bin.stable."1.94.1".default # Rust 提出のコンパイル
               pkgs.libseccomp
               pkgs.cacert
             ];
@@ -174,9 +176,11 @@
                   pkgs.bashInteractive
                   pkgs.which
                   pkgs.gcc
+                  pkgs.jdk25_headless
+                  pkgs.go_1_26
                   pkgs.python3
                   pkgs.pypy3
-                  pkgs.rust-bin.stable.latest.default
+                  pkgs.rust-bin.stable."1.94.1".default
                 ]}"
               ];
             };
@@ -186,12 +190,15 @@
         devShells.default = pkgs.mkShell {
           buildInputs = [
             rustToolchain
+            pkgs.coreutils
             pkgs.gcc
             pkgs.gdb
             pkgs.pkg-config
             pkgs.openssl.dev
             pkgs.cargo-watch
             pkgs.sqlx-cli
+            pkgs.jdk25_headless
+            pkgs.go_1_26
             pkgs.python3
             pkgs.pypy3
             dbMigrate
@@ -208,8 +215,10 @@
             echo "mikan-judge dev shell"
             echo "  Rust : $(rustc --version)"
             echo "  g++  : $(g++ --version | head -1)"
-            echo "  CPy  : $(python3 --version)"
-            echo "  PyPy : $(pypy3 --version 2>&1 | tail -1)"
+            echo "  Java : $(${pkgs.jdk25_headless}/bin/javac --version)"
+            echo "  Go   : $(${pkgs.go_1_26}/bin/go version)"
+            echo "  CPy  : $(${pkgs.python3}/bin/python3 --version)"
+            echo "  PyPy : $(${pkgs.pypy3}/bin/pypy3 --version 2>&1 | paste -sd ' ' -)"
             echo ""
             echo "Start: dev"
             echo "Linux Docker judge: dev-docker"
