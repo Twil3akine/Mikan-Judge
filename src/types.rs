@@ -128,19 +128,48 @@ async fn detect_version(cmd: &str, args: &[&str]) -> Option<String> {
     } else {
         String::from_utf8_lossy(&out.stdout).into_owned()
     };
-    let first_line = raw.lines().next()?.trim().to_string();
-    Some(parse_version(cmd, &first_line))
+    Some(parse_version(cmd, &raw))
 }
 
-fn parse_version(cmd: &str, line: &str) -> String {
+fn parse_version(cmd: &str, raw: &str) -> String {
     match cmd {
         // "Python 3.13.1" → "3.13.1"
-        "python3" | "pypy3" => line.split_whitespace().nth(1).unwrap_or(line).to_string(),
+        "python3" => raw
+            .lines()
+            .next()
+            .unwrap_or(raw)
+            .split_whitespace()
+            .nth(1)
+            .unwrap_or(raw.trim())
+            .to_string(),
+        // "Python 3.11.15 ...\n[PyPy 7.3.21 with ...]" → "7.3.21"
+        "pypy3" => {
+            let pypy = raw
+                .lines()
+                .find(|line| line.contains("[PyPy "))
+                .and_then(|line| line.split_whitespace().nth(1));
+
+            pypy.unwrap_or_else(|| raw.lines().next().unwrap_or(raw).trim()).to_string()
+        }
         // "rustc 1.82.0 (f6e511eec 2024-10-15)" → "1.82.0"
-        "rustc" => line.split_whitespace().nth(1).unwrap_or(line).to_string(),
+        "rustc" => raw
+            .lines()
+            .next()
+            .unwrap_or(raw)
+            .split_whitespace()
+            .nth(1)
+            .unwrap_or(raw.trim())
+            .to_string(),
         // "g++ (Homebrew GCC 14.2.0...) 14.2.0" or "g++ (GCC) 14.2.0" → last word
-        "g++" => line.split_whitespace().last().unwrap_or(line).to_string(),
-        _ => line.to_string(),
+        "g++" => raw
+            .lines()
+            .next()
+            .unwrap_or(raw)
+            .split_whitespace()
+            .last()
+            .unwrap_or(raw.trim())
+            .to_string(),
+        _ => raw.lines().next().unwrap_or(raw).trim().to_string(),
     }
 }
 
