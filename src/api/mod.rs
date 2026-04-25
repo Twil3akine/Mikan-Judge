@@ -40,6 +40,7 @@ pub async fn create_router(state: AppState) -> Router {
         .route("/logout",   post(handlers::logout))
         // ---- ユーザー設定 ----
         .route("/settings", get(handlers::settings_get).post(handlers::settings_post))
+        .route("/settings/change-password", post(handlers::change_password))
         .route("/settings/delete-account", post(handlers::delete_account))
         // ---- トップ（ランディング）・コンテスト一覧 ----
         .route("/", get(handlers::index))
