@@ -69,6 +69,15 @@ pub async fn update_default_language(
     Ok(())
 }
 
+pub async fn update_password(pool: &PgPool, id: Uuid, password_hash: &str) -> Result<()> {
+    sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
+        .bind(password_hash)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn delete(pool: &PgPool, id: Uuid) -> Result<()> {
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(id)
