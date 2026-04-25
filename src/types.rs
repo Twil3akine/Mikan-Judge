@@ -341,6 +341,7 @@ pub struct User {
     pub username: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
+    pub default_language: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -390,6 +390,145 @@ pub async fn logout(session: Session) -> Result<Response, HtmlError> {
     Ok(Redirect::to("/login").into_response())
 }
 
+// ---- ユーザー設定 ----
+
+#[derive(Deserialize)]
+pub struct SettingsForm {
+    default_language: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct DeleteAccountForm {
+    password: String,
+}
+
+pub async fn settings_get(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<Response, HtmlError> {
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    let Some(user_id) = user_id else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+    let user = db_user::find_by_id(&state.pool, user_id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("user not found")))?;
+
+    let mut ctx = Context::new();
+    ctx.insert("current_user", &Some(&user.username));
+    ctx.insert("contest_id", &Option::<String>::None);
+    ctx.insert("default_language", &user.default_language);
+    ctx.insert("error", &Option::<String>::None);
+    ctx.insert("success", &false);
+    Ok(render(&state.tera, "settings.html", ctx)?.into_response())
+}
+
+pub async fn settings_post(
+    State(state): State<AppState>,
+    session: Session,
+    Form(form): Form<SettingsForm>,
+) -> Result<Response, HtmlError> {
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    let Some(user_id) = user_id else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+    let user = db_user::find_by_id(&state.pool, user_id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("user not found")))?;
+
+    let lang = form.default_language.as_deref().filter(|s| !s.is_empty());
+    db_user::update_default_language(&state.pool, user_id, lang).await?;
+
+    let mut ctx = Context::new();
+    ctx.insert("current_user", &Some(&user.username));
+    ctx.insert("contest_id", &Option::<String>::None);
+    ctx.insert("default_language", &lang);
+    ctx.insert("error", &Option::<String>::None);
+    ctx.insert("success", &true);
+    Ok(render(&state.tera, "settings.html", ctx)?.into_response())
+}
+
+pub async fn delete_account(
+    State(state): State<AppState>,
+    session: Session,
+    Form(form): Form<DeleteAccountForm>,
+) -> Result<Response, HtmlError> {
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    let Some(user_id) = user_id else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+    let user = db_user::find_by_id(&state.pool, user_id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("user not found")))?;
+
+    if !verify_password(form.password.trim(), &user.password_hash) {
+        let mut ctx = Context::new();
+        ctx.insert("current_user", &Some(&user.username));
+        ctx.insert("contest_id", &Option::<String>::None);
+        ctx.insert("default_language", &user.default_language);
+        ctx.insert("success", &false);
+        ctx.insert("error", &Some("パスワードが違います"));
+        return Ok(render(&state.tera, "settings.html", ctx)?.into_response());
+    }
+
+    db_user::delete(&state.pool, user_id).await?;
+    session
+        .flush()
+        .await
+        .map_err(|e| HtmlError(anyhow::anyhow!("session error: {e}")))?;
+    Ok(Redirect::to("/").into_response())
+}
+
+#[derive(Deserialize)]
+pub struct ChangePasswordForm {
+    current_password: String,
+    new_password: String,
+}
+
+pub async fn change_password(
+    State(state): State<AppState>,
+    session: Session,
+    Form(form): Form<ChangePasswordForm>,
+) -> Result<Response, HtmlError> {
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    let Some(user_id) = user_id else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+    let user = db_user::find_by_id(&state.pool, user_id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("user not found")))?;
+
+    let render_error = |msg: &'static str| {
+        let mut ctx = Context::new();
+        ctx.insert("current_user", &Some(user.username.clone()));
+        ctx.insert("contest_id", &Option::<String>::None);
+        ctx.insert("default_language", &user.default_language.clone());
+        ctx.insert("success", &false);
+        ctx.insert("error", &Some(msg));
+        ctx
+    };
+
+    if !verify_password(form.current_password.trim(), &user.password_hash) {
+        let ctx = render_error("現在のパスワードが違います");
+        return Ok(render(&state.tera, "settings.html", ctx)?.into_response());
+    }
+    if form.new_password.trim().len() < 6 {
+        let ctx = render_error("新しいパスワードは6文字以上にしてください");
+        return Ok(render(&state.tera, "settings.html", ctx)?.into_response());
+    }
+
+    let new_hash = hash_password(form.new_password.trim())?;
+    db_user::update_password(&state.pool, user_id, &new_hash).await?;
+
+    let mut ctx = Context::new();
+    ctx.insert("current_user", &Some(&user.username));
+    ctx.insert("contest_id", &Option::<String>::None);
+    ctx.insert("default_language", &user.default_language);
+    ctx.insert("error", &Option::<String>::None);
+    ctx.insert("success", &true);
+    Ok(render(&state.tera, "settings.html", ctx)?.into_response())
+}
+
 // ---- トップページ（ランディング） ----
 
 pub async fn index(
@@ -549,6 +688,17 @@ pub async fn contest_problem_detail(
     let prob = problem::load_one(&state.problems_dir, &problem_id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
 
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    let default_language = if let Some(uid) = user_id {
+        db_user::find_by_id(&state.pool, uid)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|u| u.default_language)
+    } else {
+        None
+    };
+
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
     ctx.insert("contest_title", &contest.title);
@@ -560,6 +710,7 @@ pub async fn contest_problem_detail(
         &current_username(&session, &state.pool).await,
     );
     ctx.insert("cooldown_remaining_ms", &query.cooldown_remaining_ms);
+    ctx.insert("default_language", &default_language);
     render(&state.tera, "contests/problems/detail.html", ctx)
 }
 
@@ -1156,6 +1307,18 @@ pub async fn problems_detail(
 ) -> Result<Html<String>, HtmlError> {
     let prob = problem::load_one(&state.problems_dir, &id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{id}' not found")))?;
+
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    let default_language = if let Some(uid) = user_id {
+        db_user::find_by_id(&state.pool, uid)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|u| u.default_language)
+    } else {
+        None
+    };
+
     let mut ctx = Context::new();
     ctx.insert("problem", &prob);
     ctx.insert("lang_labels", &build_lang_labels(&state.lang_versions));
@@ -1165,6 +1328,7 @@ pub async fn problems_detail(
         &current_username(&session, &state.pool).await,
     );
     ctx.insert("cooldown_remaining_ms", &Option::<i64>::None);
+    ctx.insert("default_language", &default_language);
     render(&state.tera, "problems/detail.html", ctx)
 }
 

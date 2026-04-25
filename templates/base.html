@@ -39,6 +39,7 @@
     <span style="flex:1"></span>
     {% if current_user %}
     <span style="color:var(--muted);font-size:.875rem">{{ current_user }}</span>
+    <a href="/settings" style="font-size:.875rem">設定</a>
     <form method="POST" action="/logout" style="margin:0">
       <button type="submit" class="btn" style="padding:.6rem .75rem;font-size:.8rem">ログアウト</button>
     </form>

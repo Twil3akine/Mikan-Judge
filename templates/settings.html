@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}設定 | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="max-width:480px;margin:2rem auto">
+  <h1 style="margin-bottom:1.5rem">設定</h1>
+
+  {% if error %}
+  <div style="background:#fee2e2;border:1px solid #fecaca;border-radius:var(--radius);padding:.75rem 1rem;margin-bottom:1.25rem;color:var(--wa);font-size:.9rem">
+    {{ error }}
+  </div>
+  {% endif %}
+
+  {% if success %}
+  <div style="background:#d1fae5;border:1px solid #a7f3d0;border-radius:var(--radius);padding:.75rem 1rem;margin-bottom:1.25rem;color:#065f46;font-size:.9rem">
+    設定を保存しました
+  </div>
+  {% endif %}
+
+  <!-- デフォルト言語 -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <h2 style="margin-top:0;font-size:1rem">デフォルト言語</h2>
+    <p style="color:var(--muted);font-size:.875rem;margin-bottom:1rem">提出フォームで最初に選択される言語を設定します。</p>
+    <form method="POST" action="/settings">
+      <div class="form-group" style="margin-bottom:1rem">
+        <label for="default_language">言語</label>
+        <select name="default_language" id="default_language">
+          <option value="" {% if not default_language %}selected{% endif %}>未設定（C++17）</option>
+          <option value="cpp"    {% if default_language == "cpp"    %}selected{% endif %}>C++17</option>
+          <option value="rust"   {% if default_language == "rust"   %}selected{% endif %}>Rust</option>
+          <option value="python" {% if default_language == "python" %}selected{% endif %}>Python (CPython)</option>
+          <option value="pypy"   {% if default_language == "pypy"   %}selected{% endif %}>Python (PyPy)</option>
+          <option value="java"   {% if default_language == "java"   %}selected{% endif %}>Java</option>
+          <option value="go"     {% if default_language == "go"     %}selected{% endif %}>Go</option>
+          <option value="text"   {% if default_language == "text"   %}selected{% endif %}>Text</option>
+        </select>
+      </div>
+      <button type="submit" class="btn">保存</button>
+    </form>
+  </div>
+
+  <!-- パスワード変更 -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <h2 style="margin-top:0;font-size:1rem">パスワード変更</h2>
+    <form method="POST" action="/settings/change-password">
+      <div class="form-group">
+        <label for="current_password">現在のパスワード</label>
+        <input type="password" name="current_password" id="current_password" required autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <div class="form-group" style="margin-bottom:1rem">
+        <label for="new_password">新しいパスワード <small style="color:var(--muted);font-weight:400">(6文字以上)</small></label>
+        <input type="password" name="new_password" id="new_password" required autocomplete="new-password" minlength="6" placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn">変更する</button>
+    </form>
+  </div>
+
+  <!-- アカウント削除 -->
+  <div class="card" style="border:1px solid #fecaca">
+    <h2 style="margin-top:0;font-size:1rem;color:var(--wa)">アカウントを削除</h2>
+    <p style="color:var(--muted);font-size:.875rem;margin-bottom:1rem">
+      アカウントを削除します。提出履歴は残りますが、ユーザー名との紐付けは失われます。この操作は取り消せません。
+    </p>
+    <form method="POST" action="/settings/delete-account"
+          onsubmit="return confirm('本当にアカウントを削除しますか？この操作は取り消せません。')">
+      <div class="form-group" style="margin-bottom:1rem">
+        <label for="password">パスワードを入力して確認</label>
+        <input type="password" name="password" id="password" required autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn" style="background:var(--wa);border-color:var(--wa)">アカウントを削除する</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
