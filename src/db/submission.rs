@@ -182,6 +182,48 @@ pub async fn count_for_contest(pool: &PgPool, contest_id: &str) -> Result<i64> {
     Ok(row.0)
 }
 
+/// コンテスト内の特定ユーザーの提出一覧（ページネーション付き）
+pub async fn list_for_contest_by_user(
+    pool: &PgPool,
+    contest_id: &str,
+    user_id: Uuid,
+    page: i64,
+    per_page: i64,
+) -> Result<Vec<SubmissionListRow>> {
+    let offset = (page - 1) * per_page;
+    let rows = sqlx::query_as::<_, SubmissionListRow>(
+        "SELECT s.id, u.username, s.problem_id, s.language, s.status,
+                s.time_used_ms, s.memory_used_kb, s.testcase_results, s.score
+         FROM submissions s
+         LEFT JOIN users u ON s.user_id = u.id
+         WHERE s.contest_id = $1 AND s.user_id = $2
+         ORDER BY s.created_at DESC
+         LIMIT $3 OFFSET $4",
+    )
+    .bind(contest_id)
+    .bind(user_id)
+    .bind(per_page)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn count_for_contest_by_user(
+    pool: &PgPool,
+    contest_id: &str,
+    user_id: Uuid,
+) -> Result<i64> {
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM submissions WHERE contest_id = $1 AND user_id = $2",
+    )
+    .bind(contest_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0)
+}
+
 pub async fn update_status(pool: &PgPool, id: Uuid, status: &JudgeStatus) -> Result<()> {
     sqlx::query("UPDATE submissions SET status = $1 WHERE id = $2")
         .bind(status.to_db())
