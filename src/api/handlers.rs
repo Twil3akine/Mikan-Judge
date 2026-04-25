@@ -851,19 +851,33 @@ pub async fn contest_submission_detail(
 
 pub async fn contest_submission_poll(
     State(state): State<AppState>,
-    Path((_contest_id, id)): Path<(String, Uuid)>,
-) -> Result<Html<String>, HtmlError> {
+    Path((contest_id, id)): Path<(String, Uuid)>,
+) -> Result<Response, HtmlError> {
     let sub = db_sub::get_by_id(&state.pool, id)
         .await?
         .ok_or_else(|| HtmlError(anyhow::anyhow!("submission not found")))?;
 
     let (verdict, badge_class, is_pending) = verdict_info(&sub.status);
+
+    if !is_pending {
+        let location = format!("/contests/{contest_id}/submissions/{id}");
+        return Ok((
+            [(
+                axum::http::header::HeaderName::from_static("hx-redirect"),
+                axum::http::HeaderValue::from_str(&location).unwrap(),
+            )],
+            StatusCode::NO_CONTENT,
+        )
+            .into_response());
+    }
+
     let mut ctx = Context::new();
     ctx.insert("id", &sub.id.to_string());
+    ctx.insert("contest_id", &contest_id);
     ctx.insert("verdict", verdict);
     ctx.insert("badge_class", badge_class);
     ctx.insert("is_pending", &is_pending);
-    render(&state.tera, "submissions/poll.html", ctx)
+    Ok(render(&state.tera, "submissions/poll.html", ctx)?.into_response())
 }
 
 // ---- 順位表 ----
@@ -1319,19 +1333,32 @@ pub async fn submissions_detail(
 pub async fn submissions_poll(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Html<String>, HtmlError> {
+) -> Result<Response, HtmlError> {
     let sub = db_sub::get_by_id(&state.pool, id)
         .await?
         .ok_or_else(|| HtmlError(anyhow::anyhow!("submission not found")))?;
 
     let (verdict, badge_class, is_pending) = verdict_info(&sub.status);
+
+    if !is_pending {
+        let location = format!("/submissions/{id}");
+        return Ok((
+            [(
+                axum::http::header::HeaderName::from_static("hx-redirect"),
+                axum::http::HeaderValue::from_str(&location).unwrap(),
+            )],
+            StatusCode::NO_CONTENT,
+        )
+            .into_response());
+    }
+
     let mut ctx = Context::new();
     ctx.insert("id", &sub.id.to_string());
     ctx.insert("verdict", verdict);
     ctx.insert("badge_class", badge_class);
     ctx.insert("is_pending", &is_pending);
 
-    render(&state.tera, "submissions/poll.html", ctx)
+    Ok(render(&state.tera, "submissions/poll.html", ctx)?.into_response())
 }
 
 // ---- JSON API (後方互換) ----
