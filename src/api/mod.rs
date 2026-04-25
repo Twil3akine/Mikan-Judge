@@ -52,6 +52,7 @@ pub async fn create_router(state: AppState) -> Router {
         .route("/contests/{contest_id}/problems/{problem_id}", get(handlers::contest_problem_detail))
         .route("/contests/{contest_id}/problems/{problem_id}/submit", post(handlers::contest_problem_submit))
         .route("/contests/{contest_id}/submissions", get(handlers::contest_submissions_index))
+        .route("/contests/{contest_id}/submissions/my", get(handlers::contest_submissions_my))
         .route("/contests/{contest_id}/submissions/{id}", get(handlers::contest_submission_detail))
         .route("/contests/{contest_id}/submissions/{id}/poll", get(handlers::contest_submission_poll))
         .route("/contests/{contest_id}/standings", get(handlers::contest_standings))

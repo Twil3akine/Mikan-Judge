@@ -29,7 +29,8 @@
     <a class="logo" href="/">🍊 MikanJudge</a>
     {% if contest_id %}
     <a href="/contests/{{ contest_id }}/problems">問題一覧</a>
-    <a href="/contests/{{ contest_id }}/submissions">提出一覧</a>
+    <a href="/contests/{{ contest_id }}/submissions">全体の提出</a>
+    <a href="/contests/{{ contest_id }}/submissions/my">自分の提出</a>
     <a href="/contests/{{ contest_id }}/standings">順位表</a>
     <a href="/languages">提出言語</a>
     {% else %}
