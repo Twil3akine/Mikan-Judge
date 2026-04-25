@@ -19,13 +19,13 @@
     <div class="form-group">
       <label for="language">言語</label>
       <select name="language" id="language" onchange="updateEditorMode()">
-        <option value="cpp">{{ lang_labels.cpp }}</option>
-        <option value="rust">{{ lang_labels.rust }}</option>
-        <option value="python">{{ lang_labels.python }}</option>
-        <option value="pypy">{{ lang_labels.pypy }}</option>
-        <option value="java">{{ lang_labels.java }}</option>
-        <option value="go">{{ lang_labels.go }}</option>
-        <option value="text">{{ lang_labels.text }}</option>
+        <option value="cpp"    {% if default_language == "cpp"    %}selected{% endif %}>{{ lang_labels.cpp }}</option>
+        <option value="rust"   {% if default_language == "rust"   %}selected{% endif %}>{{ lang_labels.rust }}</option>
+        <option value="python" {% if default_language == "python" %}selected{% endif %}>{{ lang_labels.python }}</option>
+        <option value="pypy"   {% if default_language == "pypy"   %}selected{% endif %}>{{ lang_labels.pypy }}</option>
+        <option value="java"   {% if default_language == "java"   %}selected{% endif %}>{{ lang_labels.java }}</option>
+        <option value="go"     {% if default_language == "go"     %}selected{% endif %}>{{ lang_labels.go }}</option>
+        <option value="text"   {% if default_language == "text"   %}selected{% endif %}>{{ lang_labels.text }}</option>
       </select>
     </div>
     <div class="form-group">

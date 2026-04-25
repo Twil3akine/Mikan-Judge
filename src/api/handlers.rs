@@ -638,6 +638,17 @@ pub async fn contest_problem_detail(
     let prob = problem::load_one(&state.problems_dir, &problem_id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
 
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    let default_language = if let Some(uid) = user_id {
+        db_user::find_by_id(&state.pool, uid)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|u| u.default_language)
+    } else {
+        None
+    };
+
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
     ctx.insert("contest_title", &contest.title);
@@ -649,6 +660,7 @@ pub async fn contest_problem_detail(
         &current_username(&session, &state.pool).await,
     );
     ctx.insert("cooldown_remaining_ms", &query.cooldown_remaining_ms);
+    ctx.insert("default_language", &default_language);
     render(&state.tera, "contests/problems/detail.html", ctx)
 }
 
@@ -1245,6 +1257,18 @@ pub async fn problems_detail(
 ) -> Result<Html<String>, HtmlError> {
     let prob = problem::load_one(&state.problems_dir, &id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{id}' not found")))?;
+
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    let default_language = if let Some(uid) = user_id {
+        db_user::find_by_id(&state.pool, uid)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|u| u.default_language)
+    } else {
+        None
+    };
+
     let mut ctx = Context::new();
     ctx.insert("problem", &prob);
     ctx.insert("lang_labels", &build_lang_labels(&state.lang_versions));
@@ -1254,6 +1278,7 @@ pub async fn problems_detail(
         &current_username(&session, &state.pool).await,
     );
     ctx.insert("cooldown_remaining_ms", &Option::<i64>::None);
+    ctx.insert("default_language", &default_language);
     render(&state.tera, "problems/detail.html", ctx)
 }
 
