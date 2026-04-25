@@ -838,6 +838,21 @@ pub async fn contest_submissions_index(
         .await?
         .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
 
+    // 開催中は全体提出を非公開にする
+    if matches!(contest.status(), crate::types::ContestStatus::Ongoing) {
+        let mut ctx = Context::new();
+        ctx.insert("contest_id", &contest_id);
+        ctx.insert("contest_title", &contest.title);
+        ctx.insert("is_restricted", &true);
+        ctx.insert("is_heuristic", &matches!(contest.judge_type, JudgeType::Heuristic));
+        ctx.insert("submissions", &Vec::<SubmissionListItem>::new());
+        ctx.insert("current_page", &1i64);
+        ctx.insert("total_pages", &1i64);
+        ctx.insert("pagination", &Vec::<i64>::new());
+        ctx.insert("current_user", &current_username(&session, &state.pool).await);
+        return render(&state.tera, "contests/submissions/index.html", ctx);
+    }
+
     let total = db_sub::count_for_contest(&state.pool, &contest_id).await?;
     let total_pages = ((total + PER_PAGE - 1) / PER_PAGE).max(1);
     let page = page.min(total_pages);
@@ -896,6 +911,7 @@ pub async fn contest_submissions_index(
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
     ctx.insert("contest_title", &contest.title);
+    ctx.insert("is_restricted", &false);
     ctx.insert(
         "is_heuristic",
         &matches!(contest.judge_type, JudgeType::Heuristic),
@@ -909,6 +925,96 @@ pub async fn contest_submissions_index(
         &current_username(&session, &state.pool).await,
     );
     render(&state.tera, "contests/submissions/index.html", ctx)
+}
+
+// ---- コンテスト内 自分の提出一覧 ----
+
+pub async fn contest_submissions_my(
+    State(state): State<AppState>,
+    session: Session,
+    Path(contest_id): Path<String>,
+    Query(pq): Query<PageQuery>,
+) -> Result<Html<String>, HtmlError> {
+    const PER_PAGE: i64 = 20;
+    let page = pq.page.unwrap_or(1).max(1);
+
+    let contest = db_contest::get_by_id(&state.pool, &contest_id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+
+    let current_user = current_username(&session, &state.pool).await;
+
+    // 未ログインの場合は空リストを表示
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+
+    let cp_list = db_contest::problems_for_contest(&state.pool, &contest_id).await?;
+    let label_map: std::collections::HashMap<&str, &str> = cp_list
+        .iter()
+        .map(|cp| (cp.problem_id.as_str(), cp.label.as_str()))
+        .collect();
+    let problems = problem::load_all(&state.problems_dir);
+    let title_map: std::collections::HashMap<&str, &str> = problems
+        .iter()
+        .map(|p| (p.id.as_str(), p.title.as_str()))
+        .collect();
+
+    let (items, total_pages, page) = if let Some(uid) = user_id {
+        let total = db_sub::count_for_contest_by_user(&state.pool, &contest_id, uid).await?;
+        let total_pages = ((total + PER_PAGE - 1) / PER_PAGE).max(1);
+        let page = page.min(total_pages);
+        let rows =
+            db_sub::list_for_contest_by_user(&state.pool, &contest_id, uid, page, PER_PAGE)
+                .await?;
+        let items: Vec<SubmissionListItem> = rows
+            .iter()
+            .map(|s| {
+                let status = JudgeStatus::from_db(&s.status);
+                let (verdict, badge_class, _) = verdict_info(&status);
+                SubmissionListItem {
+                    id: s.id.to_string(),
+                    problem_id: s.problem_id.clone(),
+                    problem_label: label_map
+                        .get(s.problem_id.as_str())
+                        .copied()
+                        .unwrap_or(&s.problem_id)
+                        .to_string(),
+                    problem_title: title_map
+                        .get(s.problem_id.as_str())
+                        .copied()
+                        .unwrap_or(&s.problem_id)
+                        .to_string(),
+                    username: s.username.clone(),
+                    language: Language::from_db(&s.language)
+                        .display_name_versioned(&state.lang_versions),
+                    verdict,
+                    badge_class,
+                    time_used_ms: s.time_used_ms.map(|v| v as u64),
+                    memory_used_kb: s.memory_used_kb.map(|v| v as u64),
+                    tc_summary: s.testcase_results.as_deref().and_then(tc_summary_from_json),
+                    score: s.score.map(format_score),
+                }
+            })
+            .collect();
+        (items, total_pages, page)
+    } else {
+        (vec![], 1, 1)
+    };
+
+    let pagination = build_pagination(page, total_pages);
+
+    let mut ctx = Context::new();
+    ctx.insert("contest_id", &contest_id);
+    ctx.insert("contest_title", &contest.title);
+    ctx.insert(
+        "is_heuristic",
+        &matches!(contest.judge_type, JudgeType::Heuristic),
+    );
+    ctx.insert("submissions", &items);
+    ctx.insert("current_page", &page);
+    ctx.insert("total_pages", &total_pages);
+    ctx.insert("pagination", &pagination);
+    ctx.insert("current_user", &current_user);
+    render(&state.tera, "contests/submissions/my.html", ctx)
 }
 
 // ---- コンテスト内 提出詳細 ----
