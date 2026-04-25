@@ -1,21 +1,16 @@
 {% extends "base.html" %}
-{% block title %}提出一覧 - {{ contest_title }} | MikanJudge{% endblock %}
+{% block title %}自分の提出 - {{ contest_title }} | MikanJudge{% endblock %}
 
 {% block content %}
 <div style="margin-bottom:1rem">
-  <h1 style="margin-bottom:.25rem">提出一覧</h1>
+  <h1 style="margin-bottom:.25rem">自分の提出</h1>
   <p style="color:var(--muted);font-size:.875rem">{{ contest_title }}</p>
 </div>
 
-{% if is_restricted %}
+{% if not current_user %}
 <div class="card" style="text-align:center;padding:3rem 2rem">
-  <div style="font-size:2rem;margin-bottom:1rem">🔒</div>
-  <p style="font-weight:600;margin-bottom:.5rem">コンテスト開催中は全体の提出は公開されません</p>
-  <p style="color:var(--muted);font-size:.875rem;margin-bottom:1.5rem">
-    コンテスト終了後に全員の提出が公開されます。<br>自分の提出は
-    <a href="/contests/{{ contest_id }}/submissions/my">自分の提出</a>
-    から確認できます。
-  </p>
+  <p style="color:var(--muted);margin-bottom:1rem">提出履歴を確認するにはログインが必要です。</p>
+  <a href="/login" class="btn">ログイン</a>
 </div>
 {% else %}
 <div class="card" style="padding:0;overflow:hidden">
@@ -23,7 +18,6 @@
   <table>
     <thead>
       <tr>
-        <th>ユーザ</th>
         <th>問題</th>
         <th>言語</th>
         <th>結果</th>
@@ -38,7 +32,6 @@
     <tbody>
       {% for s in submissions %}
       <tr style="cursor:pointer" onclick="location.href='/contests/{{ contest_id }}/submissions/{{ s.id }}'">
-        <td>{% if s.username %}<span>{{ s.username }}</span>{% else %}<span style="color:var(--muted)">—</span>{% endif %}</td>
         <td>
           <a href="/contests/{{ contest_id }}/problems/{{ s.problem_id }}" onclick="event.stopPropagation()">
             <b>{{ s.problem_label }}</b>. {{ s.problem_title }}
@@ -63,9 +56,8 @@
   {% endif %}
 </div>
 
-<!-- ページネーション（常に表示） -->
 <nav class="pagination" aria-label="ページナビゲーション">
-  <a href="/contests/{{ contest_id }}/submissions?page={{ current_page - 1 }}"
+  <a href="/contests/{{ contest_id }}/submissions/my?page={{ current_page - 1 }}"
      class="page-btn page-arrow{% if current_page <= 1 %} page-btn-disabled{% endif %}"
      {% if current_page <= 1 %}aria-disabled="true" tabindex="-1"{% endif %}>
     &#8249;
@@ -77,11 +69,11 @@
     {% elif n == current_page %}
     <span class="page-btn page-btn-current" aria-current="page">{{ n }}</span>
     {% else %}
-    <a href="/contests/{{ contest_id }}/submissions?page={{ n }}" class="page-btn">{{ n }}</a>
+    <a href="/contests/{{ contest_id }}/submissions/my?page={{ n }}" class="page-btn">{{ n }}</a>
     {% endif %}
   {% endfor %}
 
-  <a href="/contests/{{ contest_id }}/submissions?page={{ current_page + 1 }}"
+  <a href="/contests/{{ contest_id }}/submissions/my?page={{ current_page + 1 }}"
      class="page-btn page-arrow{% if current_page >= total_pages %} page-btn-disabled{% endif %}"
      {% if current_page >= total_pages %}aria-disabled="true" tabindex="-1"{% endif %}>
     &#8250;
