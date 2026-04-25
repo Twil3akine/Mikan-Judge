@@ -479,6 +479,56 @@ pub async fn delete_account(
     Ok(Redirect::to("/").into_response())
 }
 
+#[derive(Deserialize)]
+pub struct ChangePasswordForm {
+    current_password: String,
+    new_password: String,
+}
+
+pub async fn change_password(
+    State(state): State<AppState>,
+    session: Session,
+    Form(form): Form<ChangePasswordForm>,
+) -> Result<Response, HtmlError> {
+    let user_id: Option<Uuid> = session.get("user_id").await.ok().flatten();
+    let Some(user_id) = user_id else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+    let user = db_user::find_by_id(&state.pool, user_id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("user not found")))?;
+
+    let render_error = |msg: &'static str| {
+        let mut ctx = Context::new();
+        ctx.insert("current_user", &Some(user.username.clone()));
+        ctx.insert("contest_id", &Option::<String>::None);
+        ctx.insert("default_language", &user.default_language.clone());
+        ctx.insert("success", &false);
+        ctx.insert("error", &Some(msg));
+        ctx
+    };
+
+    if !verify_password(form.current_password.trim(), &user.password_hash) {
+        let ctx = render_error("現在のパスワードが違います");
+        return Ok(render(&state.tera, "settings.html", ctx)?.into_response());
+    }
+    if form.new_password.trim().len() < 6 {
+        let ctx = render_error("新しいパスワードは6文字以上にしてください");
+        return Ok(render(&state.tera, "settings.html", ctx)?.into_response());
+    }
+
+    let new_hash = hash_password(form.new_password.trim())?;
+    db_user::update_password(&state.pool, user_id, &new_hash).await?;
+
+    let mut ctx = Context::new();
+    ctx.insert("current_user", &Some(&user.username));
+    ctx.insert("contest_id", &Option::<String>::None);
+    ctx.insert("default_language", &user.default_language);
+    ctx.insert("error", &Option::<String>::None);
+    ctx.insert("success", &true);
+    Ok(render(&state.tera, "settings.html", ctx)?.into_response())
+}
+
 // ---- トップページ（ランディング） ----
 
 pub async fn index(
