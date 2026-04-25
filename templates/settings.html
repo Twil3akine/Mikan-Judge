@@ -39,6 +39,22 @@
     </form>
   </div>
 
+  <!-- パスワード変更 -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <h2 style="margin-top:0;font-size:1rem">パスワード変更</h2>
+    <form method="POST" action="/settings/change-password">
+      <div class="form-group">
+        <label for="current_password">現在のパスワード</label>
+        <input type="password" name="current_password" id="current_password" required autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <div class="form-group" style="margin-bottom:1rem">
+        <label for="new_password">新しいパスワード <small style="color:var(--muted);font-weight:400">(6文字以上)</small></label>
+        <input type="password" name="new_password" id="new_password" required autocomplete="new-password" minlength="6" placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn">変更する</button>
+    </form>
+  </div>
+
   <!-- アカウント削除 -->
   <div class="card" style="border:1px solid #fecaca">
     <h2 style="margin-top:0;font-size:1rem;color:var(--wa)">アカウントを削除</h2>
