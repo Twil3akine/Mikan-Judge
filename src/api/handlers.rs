@@ -1098,6 +1098,10 @@ pub async fn contest_submission_detail(
     ctx.insert("is_accepted", &matches!(sub.status, JudgeStatus::Accepted));
     ctx.insert("is_scored", &matches!(sub.status, JudgeStatus::Scored));
     ctx.insert(
+        "is_heuristic",
+        &matches!(contest.judge_type, JudgeType::Heuristic),
+    );
+    ctx.insert(
         "current_user",
         &current_username(&session, &state.pool).await,
     );
