@@ -43,7 +43,7 @@
   <h2 style="margin-top:0">テストケース別結果</h2>
   <table>
     <thead>
-      <tr><th>#</th><th>結果</th><th>スコア</th><th>実行時間</th><th>メモリ</th></tr>
+      <tr><th>#</th><th>結果</th>{% if is_heuristic %}<th>スコア</th>{% endif %}<th>実行時間</th><th>メモリ</th></tr>
     </thead>
     <tbody>
       {% for v in testcase_results %}
@@ -60,9 +60,11 @@
           {% else %}<span class="badge badge-ce">{{ v.verdict }}</span>
           {% endif %}
         </td>
+        {% if is_heuristic %}
         <td style="color:var(--muted);font-size:.875rem">
           {% if v.score is defined %}{{ v.score }}{% else %}-{% endif %}
         </td>
+        {% endif %}
         <td style="color:var(--muted);font-size:.875rem">
           {% if v.time_ms %}{{ v.time_ms }} ms{% else %}-{% endif %}
         </td>
