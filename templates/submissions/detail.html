@@ -60,7 +60,7 @@
 
 <div class="card">
   <h2 style="margin-top:0">ソースコード</h2>
-  <pre><code class="language-{{ lang_hljs }}">{{ source_code }}</code></pre>
+  <textarea id="source-code">{{ source_code }}</textarea>
 </div>
 
 {% if stderr and stderr != "" %}
@@ -70,4 +70,36 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/simple.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/go/go.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/rust/rust.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<script>
+const LANG_MODES = {
+  cpp:    'text/x-c++src',
+  rust:   'text/x-rustsrc',
+  python: 'python',
+  pypy:   'python',
+  java:   'text/x-java',
+  go:     'go',
+  text:   null,
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  const editor = CodeMirror.fromTextArea(document.getElementById('source-code'), {
+    mode:          LANG_MODES['{{ lang_codemirror }}'] ?? null,
+    theme:         'dracula',
+    lineNumbers:   true,
+    readOnly:      true,
+  });
+  editor.setSize('100%', 'auto');
+});
+</script>
 {% endblock %}

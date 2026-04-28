@@ -87,8 +87,9 @@ const LANG_MODES = {
 
 let editor;
 document.addEventListener('DOMContentLoaded', () => {
+  const initialLang = document.getElementById('language').value;
   editor = CodeMirror.fromTextArea(document.getElementById('source_code'), {
-    mode:          LANG_MODES['cpp'],
+    mode:          LANG_MODES[initialLang] ?? null,
     theme:         'dracula',
     lineNumbers:   true,
     indentUnit:    4,

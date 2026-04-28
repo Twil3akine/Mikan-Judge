@@ -1066,11 +1066,7 @@ pub async fn contest_submission_detail(
         return render(&state.tera, "errors/forbidden.html", ctx);
     }
 
-    let lang_hljs = match sub.language.to_db() {
-        "pypy" => "python",
-        "text" => "plaintext",
-        other => other,
-    };
+    let lang_codemirror = sub.language.to_db();
 
     let mut ctx = Context::new();
     ctx.insert("contest_id", &contest_id);
@@ -1083,7 +1079,7 @@ pub async fn contest_submission_detail(
         "language",
         &sub.language.display_name_versioned(&state.lang_versions),
     );
-    ctx.insert("lang_hljs", lang_hljs);
+    ctx.insert("lang_codemirror", lang_codemirror);
     ctx.insert("source_code", &sub.source_code);
     ctx.insert("verdict", verdict);
     ctx.insert("badge_class", badge_class);
@@ -1569,11 +1565,7 @@ pub async fn submissions_detail(
         .unwrap_or_else(|| sub.problem_id.clone());
     let problem_score = prob.as_ref().map(|p| p.score);
 
-    let lang_hljs = match sub.language.to_db() {
-        "pypy" => "python",
-        "text" => "plaintext",
-        other => other,
-    };
+    let lang_codemirror = sub.language.to_db();
 
     let mut ctx = Context::new();
     ctx.insert("contest_id", &Option::<String>::None);
@@ -1584,7 +1576,7 @@ pub async fn submissions_detail(
         "language",
         &sub.language.display_name_versioned(&state.lang_versions),
     );
-    ctx.insert("lang_hljs", lang_hljs);
+    ctx.insert("lang_codemirror", lang_codemirror);
     ctx.insert("source_code", &sub.source_code);
     ctx.insert("verdict", verdict);
     ctx.insert("badge_class", badge_class);
