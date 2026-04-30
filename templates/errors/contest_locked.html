@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}開始前です | MikanJudge{% endblock %}
+
+{% block content %}
+<div class="card" style="text-align:center;padding:3rem 2rem;max-width:560px;margin:4rem auto">
+  <div style="font-size:3rem;margin-bottom:1rem">🔒</div>
+  <h1 style="font-size:1.4rem;margin-bottom:.75rem">{{ contest_title }} はまだ開始前です</h1>
+  <p style="color:var(--muted);font-size:.95rem;line-height:1.7;margin-bottom:1rem">
+    問題や順位表は開始時刻になるまで公開されません。<br>
+    開始予定: <b>{{ contest_start_time }}</b>
+  </p>
+  <p id="countdown" style="margin-bottom:1.5rem;color:var(--muted)">開始時刻になると自動で移動します。</p>
+  <a href="/contests" class="btn" style="padding:.55rem 1.5rem">コンテスト一覧に戻る</a>
+</div>
+
+<script>
+  (() => {
+    const targetPath = {{ target_path | json_encode | safe }};
+    const startMs = Number({{ start_time_unix_ms }}) || 0;
+    const countdown = document.getElementById('countdown');
+
+    function formatRemaining(ms) {
+      const totalSec = Math.max(0, Math.ceil(ms / 1000));
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function tick() {
+      const remaining = startMs - Date.now();
+      if (remaining <= 0) {
+        window.location.replace(targetPath);
+        return;
+      }
+      if (countdown) {
+        countdown.textContent = `開始まで ${formatRemaining(remaining)} です。開始時刻になると自動で移動します。`;
+      }
+    }
+
+    tick();
+    window.setInterval(tick, 1000);
+  })();
+</script>
+{% endblock %}

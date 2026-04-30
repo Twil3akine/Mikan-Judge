@@ -44,7 +44,9 @@ direnv allow   # 初回のみ
 dev            # Docker で PostgreSQL 起動 → マイグレーション → cargo watch
 ```
 
-サーバは `http://localhost:3000` で起動します。停止は `Ctrl+C`（PostgreSQL コンテナも自動停止）。
+サーバはポート `3000` で起動し、`0.0.0.0` にバインドされます。
+このマシン自身からは `http://localhost:3000`、同一ネットワーク内の別端末からは `http://<このマシンのIPアドレス>:3000` でアクセスできます。
+停止は `Ctrl+C`（PostgreSQL コンテナも自動停止）です。
 
 Linux 本番に近い環境で judge まで含めて動かしたい場合は、こちらを使います。
 
@@ -53,6 +55,7 @@ dev-docker     # Docker で judge + PostgreSQL を起動
 ```
 
 こちらは `docker-compose.dev-docker.yml` を重ねて、アプリ本体も Linux コンテナ内で実行します。
+ポートはホスト側の `0.0.0.0:${PORT:-3000}` に公開されるため、同一ネットワーク内から `http://<このマシンのIPアドレス>:${PORT:-3000}` でアクセスできます。
 実行時間・メモリの確認は `dev` より `dev-docker` の方が本番に近く、メモリは cgroup ベースで計測します。
 `dev-docker` は judge イメージのビルド、DB の起動待ち、judge の疎通確認まで行ったうえで
 judge ログを追尾します。

@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     response::{Html, IntoResponse, Json, Redirect, Response},
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tera::Context;
@@ -43,6 +43,33 @@ impl<E: Into<anyhow::Error>> From<E> for HtmlError {
 
 fn render(tera: &tera::Tera, template: &str, ctx: Context) -> Result<Html<String>, HtmlError> {
     Ok(Html(tera.render(template, &ctx)?))
+}
+
+fn fmt_jst(dt: DateTime<Utc>) -> String {
+    let jst = FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
+    dt.with_timezone(&jst).format("%Y/%m/%d %H:%M").to_string()
+}
+
+async fn render_contest_locked(
+    state: &AppState,
+    session: &Session,
+    contest: &crate::types::Contest,
+    target_path: &str,
+) -> Result<Html<String>, HtmlError> {
+    let mut ctx = Context::new();
+    ctx.insert("contest_id", &contest.id);
+    ctx.insert("contest_title", &contest.title);
+    ctx.insert("contest_start_time", &fmt_jst(contest.start_time));
+    ctx.insert("target_path", target_path);
+    ctx.insert(
+        "start_time_unix_ms",
+        &contest.start_time.timestamp_millis(),
+    );
+    ctx.insert(
+        "current_user",
+        &current_username(session, &state.pool).await,
+    );
+    render(&state.tera, "errors/contest_locked.html", ctx)
 }
 
 fn verdict_info(status: &JudgeStatus) -> (&'static str, &'static str, bool) {
@@ -145,8 +172,8 @@ fn to_contest_item(c: &crate::types::Contest) -> ContestItem {
         id: c.id.clone(),
         title: c.title.clone(),
         description: c.description.clone(),
-        start_time: c.start_time.format("%Y/%m/%d %H:%M").to_string(),
-        end_time: c.end_time.format("%Y/%m/%d %H:%M").to_string(),
+        start_time: fmt_jst(c.start_time),
+        end_time: fmt_jst(c.end_time),
         status_label: st.label(),
         status_class: st.badge_class(),
     }
@@ -608,8 +635,23 @@ pub async fn languages(
 
 // ---- コンテスト詳細（→ 問題一覧へリダイレクト） ----
 
-pub async fn contest_detail(Path(contest_id): Path<String>) -> Redirect {
-    Redirect::to(&format!("/contests/{}/problems", contest_id))
+pub async fn contest_detail(
+    State(state): State<AppState>,
+    session: Session,
+    Path(contest_id): Path<String>,
+) -> Result<Response, HtmlError> {
+    let contest = db_contest::get_by_id(&state.pool, &contest_id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+
+    let target = format!("/contests/{contest_id}/problems");
+    if matches!(contest.status(), crate::types::ContestStatus::Upcoming) {
+        return Ok(render_contest_locked(&state, &session, &contest, &target)
+            .await?
+            .into_response());
+    }
+
+    Ok(Redirect::to(&target).into_response())
 }
 
 // ---- コンテスト内 問題一覧 ----
@@ -622,6 +664,16 @@ pub async fn contest_problems_index(
     let contest = db_contest::get_by_id(&state.pool, &contest_id)
         .await?
         .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+
+    if matches!(contest.status(), crate::types::ContestStatus::Upcoming) {
+        return render_contest_locked(
+            &state,
+            &session,
+            &contest,
+            &format!("/contests/{contest_id}/problems"),
+        )
+        .await;
+    }
 
     let cp_list = db_contest::problems_for_contest(&state.pool, &contest_id).await?;
 
@@ -676,6 +728,16 @@ pub async fn contest_problem_detail(
     let contest = db_contest::get_by_id(&state.pool, &contest_id)
         .await?
         .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+
+    if matches!(contest.status(), crate::types::ContestStatus::Upcoming) {
+        return render_contest_locked(
+            &state,
+            &session,
+            &contest,
+            &format!("/contests/{contest_id}/problems/{problem_id}"),
+        )
+        .await;
+    }
 
     // コンテストにこの問題が含まれているか確認
     let cp_list = db_contest::problems_for_contest(&state.pool, &contest_id).await?;
@@ -737,6 +799,10 @@ pub async fn contest_problem_submit(
     let contest = db_contest::get_by_id(&state.pool, &contest_id)
         .await?
         .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+
+    if matches!(contest.status(), crate::types::ContestStatus::Upcoming) {
+        return Ok(Redirect::to(&format!("/contests/{contest_id}")).into_response());
+    }
 
     let (cooldown_key, cooldown_ms) = if matches!(contest.judge_type, JudgeType::Heuristic) {
         ("last_heuristic_submit_at", 5 * 60 * 1000)
@@ -837,6 +903,16 @@ pub async fn contest_submissions_index(
     let contest = db_contest::get_by_id(&state.pool, &contest_id)
         .await?
         .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+
+    if matches!(contest.status(), crate::types::ContestStatus::Upcoming) {
+        return render_contest_locked(
+            &state,
+            &session,
+            &contest,
+            &format!("/contests/{contest_id}/submissions"),
+        )
+        .await;
+    }
 
     // 開催中は全体提出を非公開にする
     if matches!(contest.status(), crate::types::ContestStatus::Ongoing) {
@@ -942,6 +1018,16 @@ pub async fn contest_submissions_my(
         .await?
         .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
 
+    if matches!(contest.status(), crate::types::ContestStatus::Upcoming) {
+        return render_contest_locked(
+            &state,
+            &session,
+            &contest,
+            &format!("/contests/{contest_id}/submissions/my"),
+        )
+        .await;
+    }
+
     let current_user = current_username(&session, &state.pool).await;
 
     // 未ログインの場合は空リストを表示
@@ -1027,6 +1113,16 @@ pub async fn contest_submission_detail(
     let contest = db_contest::get_by_id(&state.pool, &contest_id)
         .await?
         .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+
+    if matches!(contest.status(), crate::types::ContestStatus::Upcoming) {
+        return render_contest_locked(
+            &state,
+            &session,
+            &contest,
+            &format!("/contests/{contest_id}/submissions/{id}"),
+        )
+        .await;
+    }
 
     let sub = db_sub::get_by_id(&state.pool, id)
         .await?
@@ -1148,6 +1244,16 @@ pub async fn contest_standings(
     let contest = db_contest::get_by_id(&state.pool, &contest_id)
         .await?
         .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+
+    if matches!(contest.status(), crate::types::ContestStatus::Upcoming) {
+        return render_contest_locked(
+            &state,
+            &session,
+            &contest,
+            &format!("/contests/{contest_id}/standings"),
+        )
+        .await;
+    }
 
     let cp_list = db_contest::problems_for_contest(&state.pool, &contest_id).await?;
 
