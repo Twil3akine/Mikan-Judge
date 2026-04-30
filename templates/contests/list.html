@@ -42,8 +42,8 @@
     </tr></thead>
     <tbody>
       {% for c in upcoming %}
-      <tr>
-        <td>{{ c.title }}</td>
+      <tr style="cursor:pointer" onclick="location.href='/contests/{{ c.id }}'">
+        <td><a href="/contests/{{ c.id }}">{{ c.title }}</a></td>
         <td style="color:var(--muted);font-size:.875rem">{{ c.start_time }}</td>
         <td style="color:var(--muted);font-size:.875rem">{{ c.end_time }}</td>
         <td><span class="badge badge-{{ c.status_class }}">{{ c.status_label }}</span></td>
