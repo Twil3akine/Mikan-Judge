@@ -78,7 +78,16 @@
             export POSTGRES_PASSWORD="dev"
           fi
 
-          trap 'echo ""; echo "Stopping services..."; docker compose stop' EXIT INT TERM
+          default_iface="$(route get default 2>/dev/null | awk '/interface:/{print $2; exit}')"
+          lan_ip=""
+          if [ -n "$default_iface" ]; then
+            lan_ip="$(ifconfig "$default_iface" 2>/dev/null | awk '/inet /{print $2}' | grep -v '^127\.' | head -n1)"
+          fi
+          if [ -z "$lan_ip" ]; then
+            lan_ip="$(ifconfig 2>/dev/null | awk '/inet /{print $2}' | grep -v '^127\.' | head -n1)"
+          fi
+
+          trap 'echo ""; echo "Stopping services..."; docker compose "''${compose_args[@]}" stop' EXIT INT TERM
 
           echo "Building judge image..."
           docker compose "''${compose_args[@]}" build judge
@@ -92,7 +101,7 @@
           done
 
           echo "Starting judge container..."
-          docker compose "''${compose_args[@]}" up -d judge
+          docker compose "''${compose_args[@]}" up -d db judge
 
           echo "Waiting for judge to respond..."
           until curl --silent --fail "http://localhost:${"\${PORT:-3000}"}/" >/dev/null 2>&1; do
@@ -105,7 +114,13 @@
             exit 1
           fi
 
-          echo "Listening on http://localhost:${"\${PORT:-3000}"}"
+          echo "Listening on 0.0.0.0:${"\${PORT:-3000}"}"
+          echo "Local: http://localhost:${"\${PORT:-3000}"}"
+          if [ -n "$lan_ip" ]; then
+            echo "LAN:   http://$lan_ip:${"\${PORT:-3000}"}"
+          else
+            echo "LAN:   (IP address could not be detected automatically)"
+          fi
           echo "(Ctrl+C to stop)"
           docker logs --since "$start_time" -f "$judge_container_id"
         '';
