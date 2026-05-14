@@ -50,6 +50,8 @@ pub async fn create_router(state: AppState) -> Router {
             get(handlers::admin_contests_index).post(handlers::admin_contests_create),
         )
         .route("/admin/contests/new", get(handlers::admin_contests_new))
+        .route("/admin/contests/{contest_id}/edit", get(handlers::admin_contests_edit))
+        .route("/admin/contests/{contest_id}", post(handlers::admin_contests_update))
         .route("/languages", get(handlers::languages))
         .route("/contests", get(handlers::contests_index))
         // ---- コンテスト内ルート ----

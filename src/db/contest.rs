@@ -53,6 +53,24 @@ pub async fn insert(pool: &PgPool, contest: &Contest) -> Result<()> {
     Ok(())
 }
 
+pub async fn update(pool: &PgPool, contest: &Contest) -> Result<()> {
+    let result = sqlx::query(
+        "UPDATE contests
+         SET title = $2, description = $3, start_time = $4, end_time = $5, judge_type = $6
+         WHERE id = $1",
+    )
+    .bind(&contest.id)
+    .bind(&contest.title)
+    .bind(&contest.description)
+    .bind(contest.start_time)
+    .bind(contest.end_time)
+    .bind(contest.judge_type.to_db())
+    .execute(pool)
+    .await?;
+    anyhow::ensure!(result.rows_affected() == 1, "contest not found");
+    Ok(())
+}
+
 pub async fn get_by_id(pool: &PgPool, contest_id: &str) -> Result<Option<Contest>> {
     let row = sqlx::query_as::<_, ContestRow>(
         "SELECT id, title, description, start_time, end_time, judge_type

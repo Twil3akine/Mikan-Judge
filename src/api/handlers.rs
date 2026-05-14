@@ -688,6 +688,7 @@ struct AdminContestItem {
     status_label: &'static str,
     status_class: &'static str,
     judge_type: &'static str,
+    edit_url: String,
 }
 
 fn to_admin_contest_item(c: &crate::types::Contest) -> AdminContestItem {
@@ -704,6 +705,7 @@ fn to_admin_contest_item(c: &crate::types::Contest) -> AdminContestItem {
         status_label: status.label(),
         status_class: status.badge_class(),
         judge_type,
+        edit_url: format!("/admin/contests/{}/edit", c.id),
     }
 }
 
@@ -796,17 +798,41 @@ fn validate_admin_contest_form(form: &AdminContestForm) -> Result<Contest, Strin
     })
 }
 
+fn fmt_datetime_local_jst(dt: DateTime<Utc>) -> String {
+    let jst = FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
+    dt.with_timezone(&jst).format("%Y-%m-%dT%H:%M").to_string()
+}
+
+fn contest_to_admin_form(contest: &Contest) -> AdminContestForm {
+    AdminContestForm {
+        id: contest.id.clone(),
+        title: contest.title.clone(),
+        description: contest.description.clone(),
+        start_time: fmt_datetime_local_jst(contest.start_time),
+        end_time: fmt_datetime_local_jst(contest.end_time),
+        judge_type: contest.judge_type.to_db().to_string(),
+    }
+}
+
 fn render_admin_contest_form(
     state: &AppState,
     username: &str,
     form: AdminContestForm,
     error: Option<String>,
+    form_action: &str,
+    page_title: &str,
+    submit_label: &str,
+    id_readonly: bool,
 ) -> Result<Response, HtmlError> {
     let mut ctx = Context::new();
     ctx.insert("current_user", &Some(username));
     ctx.insert("contest_id", &Option::<String>::None);
     ctx.insert("form", &form);
     ctx.insert("error", &error);
+    ctx.insert("form_action", form_action);
+    ctx.insert("page_title", page_title);
+    ctx.insert("submit_label", submit_label);
+    ctx.insert("id_readonly", &id_readonly);
     render(&state.tera, "admin/contests/new.html", ctx).map(IntoResponse::into_response)
 }
 
@@ -823,7 +849,16 @@ pub async fn admin_contests_new(
         judge_type: "exact".to_string(),
         ..Default::default()
     };
-    render_admin_contest_form(&state, &user.username, form, None)
+    render_admin_contest_form(
+        &state,
+        &user.username,
+        form,
+        None,
+        "/admin/contests",
+        "コンテスト作成",
+        "作成する",
+        false,
+    )
 }
 
 pub async fn admin_contests_create(
@@ -839,7 +874,16 @@ pub async fn admin_contests_create(
     let contest = match validate_admin_contest_form(&form) {
         Ok(contest) => contest,
         Err(message) => {
-            return render_admin_contest_form(&state, &user.username, form, Some(message));
+            return render_admin_contest_form(
+                &state,
+                &user.username,
+                form,
+                Some(message),
+                "/admin/contests",
+                "コンテスト作成",
+                "作成する",
+                false,
+            );
         }
     };
 
@@ -853,6 +897,81 @@ pub async fn admin_contests_create(
                 "コンテストの作成に失敗しました。IDが既に使われている可能性があります。"
                     .to_string(),
             ),
+            "/admin/contests",
+            "コンテスト作成",
+            "作成する",
+            false,
+        );
+    }
+
+    Ok(Redirect::to("/admin/contests").into_response())
+}
+
+pub async fn admin_contests_edit(
+    State(state): State<AppState>,
+    session: Session,
+    Path(contest_id): Path<String>,
+) -> Result<Response, HtmlError> {
+    let user = match require_admin_user(&state, &session).await? {
+        Ok(user) => user,
+        Err(response) => return Ok(response),
+    };
+
+    let contest = db_contest::get_by_id(&state.pool, &contest_id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+    let form = contest_to_admin_form(&contest);
+    render_admin_contest_form(
+        &state,
+        &user.username,
+        form,
+        None,
+        &format!("/admin/contests/{contest_id}"),
+        "コンテスト編集",
+        "保存する",
+        true,
+    )
+}
+
+pub async fn admin_contests_update(
+    State(state): State<AppState>,
+    session: Session,
+    Path(contest_id): Path<String>,
+    Form(mut form): Form<AdminContestForm>,
+) -> Result<Response, HtmlError> {
+    let user = match require_admin_user(&state, &session).await? {
+        Ok(user) => user,
+        Err(response) => return Ok(response),
+    };
+
+    form.id = contest_id.clone();
+    let contest = match validate_admin_contest_form(&form) {
+        Ok(contest) => contest,
+        Err(message) => {
+            return render_admin_contest_form(
+                &state,
+                &user.username,
+                form,
+                Some(message),
+                &format!("/admin/contests/{contest_id}"),
+                "コンテスト編集",
+                "保存する",
+                true,
+            );
+        }
+    };
+
+    if let Err(e) = db_contest::update(&state.pool, &contest).await {
+        tracing::warn!(contest_id = %contest.id, "failed to update contest: {e}");
+        return render_admin_contest_form(
+            &state,
+            &user.username,
+            form,
+            Some("コンテストの更新に失敗しました。".to_string()),
+            &format!("/admin/contests/{contest_id}"),
+            "コンテスト編集",
+            "保存する",
+            true,
         );
     }
 

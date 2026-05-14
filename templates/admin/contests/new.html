@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}コンテスト作成 | MikanJudge{% endblock %}
+{% block title %}{{ page_title }} | MikanJudge{% endblock %}
 
 {% block content %}
 <div style="max-width:720px;margin:0 auto">
   <div style="margin-bottom:1.5rem">
-    <h1 style="margin-bottom:.35rem">コンテスト作成</h1>
+    <h1 style="margin-bottom:.35rem">{{ page_title }}</h1>
     <p style="color:var(--muted);margin:0">
       コンテストの基本情報を登録します。問題の紐付けは別画面で追加します。
     </p>
@@ -16,13 +16,13 @@
   </div>
   {% endif %}
 
-  <form method="POST" action="/admin/contests" class="card">
+  <form method="POST" action="{{ form_action }}" class="card">
     <div class="form-group">
       <label for="id">ID</label>
       <input type="text" name="id" id="id" required maxlength="64" pattern="[A-Za-z0-9_-]+"
-             value="{{ form.id }}" placeholder="abc001">
+             value="{{ form.id }}" placeholder="abc001" {% if id_readonly %}readonly{% endif %}>
       <p style="color:var(--muted);font-size:.8rem;margin-top:.35rem">
-        1〜64文字の英数字・_・- が使えます。
+        1〜64文字の英数字・_・- が使えます。作成後のIDは変更できません。
       </p>
     </div>
 
@@ -62,7 +62,7 @@
     </div>
 
     <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1.5rem">
-      <button type="submit" class="btn">作成する</button>
+      <button type="submit" class="btn">{{ submit_label }}</button>
       <a href="/admin/contests" class="btn" style="background:#fff;color:var(--text);border:1px solid var(--border)">キャンセル</a>
     </div>
   </form>
