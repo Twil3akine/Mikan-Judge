@@ -46,6 +46,7 @@ pub async fn create_router(state: AppState) -> Router {
         .route("/", get(handlers::index))
         .route("/admin", get(handlers::admin_index))
         .route("/admin/problems", get(handlers::admin_problems_index))
+        .route("/admin/submissions", get(handlers::admin_submissions_index))
         .route(
             "/admin/contests",
             get(handlers::admin_contests_index).post(handlers::admin_contests_create),

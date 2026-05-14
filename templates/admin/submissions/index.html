@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}提出管理 | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1.5rem">
+  <div>
+    <h1 style="margin-bottom:.35rem">提出管理</h1>
+    <p style="color:var(--muted);margin:0">
+      全提出を最新順に確認できます。
+    </p>
+  </div>
+  <a href="/admin" class="btn" style="padding:.55rem .9rem;white-space:nowrap">管理画面へ戻る</a>
+</div>
+
+<div class="card" style="overflow-x:auto">
+  {% if submissions %}
+  <table style="min-width:980px">
+    <thead>
+      <tr>
+        <th>日時</th>
+        <th>ユーザー</th>
+        <th>コンテスト</th>
+        <th>問題</th>
+        <th>言語</th>
+        <th>結果</th>
+        <th>スコア</th>
+        <th>実行時間</th>
+        <th>メモリ</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in submissions %}
+      <tr>
+        <td style="color:var(--muted);font-size:.85rem">{{ s.created_at }}</td>
+        <td>{% if s.username %}{{ s.username }}{% else %}<span style="color:var(--muted)">—</span>{% endif %}</td>
+        <td>{% if s.contest_id %}<code>{{ s.contest_id }}</code>{% else %}<span style="color:var(--muted)">—</span>{% endif %}</td>
+        <td><code>{{ s.problem_id }}</code><br><span style="color:var(--muted);font-size:.85rem">{{ s.problem_title }}</span></td>
+        <td>{{ s.language }}</td>
+        <td><span class="badge badge-{{ s.badge_class }}">{{ s.verdict }}</span></td>
+        <td>{% if s.score %}{{ s.score }}{% else %}—{% endif %}</td>
+        <td>{% if s.time_used_ms %}{{ s.time_used_ms }} ms{% else %}—{% endif %}</td>
+        <td>{% if s.memory_used_kb %}{{ s.memory_used_kb }} KB{% else %}—{% endif %}</td>
+        <td><a href="{{ s.detail_url }}">詳細</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--muted);text-align:center;padding:2rem 0">まだ提出がありません。</p>
+  {% endif %}
+</div>
+
+<nav class="pagination" aria-label="ページナビゲーション">
+  <a href="/admin/submissions?page={{ current_page - 1 }}"
+     class="page-btn page-arrow{% if current_page <= 1 %} page-btn-disabled{% endif %}"
+     {% if current_page <= 1 %}aria-disabled="true" tabindex="-1"{% endif %}>
+    &#8249;
+  </a>
+
+  {% for n in pagination %}
+    {% if n == 0 %}
+    <span class="page-ellipsis">&#8230;</span>
+    {% elif n == current_page %}
+    <span class="page-btn page-btn-current" aria-current="page">{{ n }}</span>
+    {% else %}
+    <a href="/admin/submissions?page={{ n }}" class="page-btn">{{ n }}</a>
+    {% endif %}
+  {% endfor %}
+
+  <a href="/admin/submissions?page={{ current_page + 1 }}"
+     class="page-btn page-arrow{% if current_page >= total_pages %} page-btn-disabled{% endif %}"
+     {% if current_page >= total_pages %}aria-disabled="true" tabindex="-1"{% endif %}>
+    &#8250;
+  </a>
+
+  <span class="page-info">{{ current_page }} / {{ total_pages }} ページ</span>
+</nav>
+{% endblock %}

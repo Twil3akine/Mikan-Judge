@@ -758,6 +758,90 @@ pub async fn admin_problems_index(
 }
 
 #[derive(Serialize)]
+struct AdminSubmissionItem {
+    id: String,
+    username: Option<String>,
+    contest_id: Option<String>,
+    problem_id: String,
+    problem_title: String,
+    language: String,
+    verdict: &'static str,
+    badge_class: &'static str,
+    time_used_ms: Option<u64>,
+    memory_used_kb: Option<u64>,
+    score: Option<String>,
+    created_at: String,
+    detail_url: String,
+}
+
+pub async fn admin_submissions_index(
+    State(state): State<AppState>,
+    session: Session,
+    Query(pq): Query<PageQuery>,
+) -> Result<Response, HtmlError> {
+    let user = match require_admin_user(&state, &session).await? {
+        Ok(user) => user,
+        Err(response) => return Ok(response),
+    };
+
+    const PER_PAGE: i64 = 20;
+    let total = db_sub::count_all(&state.pool).await?;
+    let total_pages = ((total + PER_PAGE - 1) / PER_PAGE).max(1);
+    let page = pq.page.unwrap_or(1).max(1).min(total_pages);
+    let rows = db_sub::list_admin_recent(&state.pool, page, PER_PAGE).await?;
+
+    let problems = problem::load_all(&state.problems_dir);
+    let title_map: HashMap<&str, &str> = problems
+        .iter()
+        .map(|p| (p.id.as_str(), p.title.as_str()))
+        .collect();
+
+    let submissions: Vec<AdminSubmissionItem> = rows
+        .iter()
+        .map(|s| {
+            let status = JudgeStatus::from_db(&s.status);
+            let (verdict, badge_class, _) = verdict_info(&status);
+            let problem_title = title_map
+                .get(s.problem_id.as_str())
+                .copied()
+                .unwrap_or(&s.problem_id)
+                .to_string();
+            let detail_url = s
+                .contest_id
+                .as_ref()
+                .map(|contest_id| format!("/contests/{contest_id}/submissions/{}", s.id))
+                .unwrap_or_else(|| format!("/submissions/{}", s.id));
+            AdminSubmissionItem {
+                id: s.id.to_string(),
+                username: s.username.clone(),
+                contest_id: s.contest_id.clone(),
+                problem_id: s.problem_id.clone(),
+                problem_title,
+                language: Language::from_db(&s.language)
+                    .display_name_versioned(&state.lang_versions),
+                verdict,
+                badge_class,
+                time_used_ms: s.time_used_ms.map(|v| v as u64),
+                memory_used_kb: s.memory_used_kb.map(|v| v as u64),
+                score: s.score.map(format_score),
+                created_at: fmt_jst(s.created_at),
+                detail_url,
+            }
+        })
+        .collect();
+
+    let pagination = build_pagination(page, total_pages);
+    let mut ctx = Context::new();
+    ctx.insert("current_user", &Some(user.username));
+    ctx.insert("contest_id", &Option::<String>::None);
+    ctx.insert("submissions", &submissions);
+    ctx.insert("current_page", &page);
+    ctx.insert("total_pages", &total_pages);
+    ctx.insert("pagination", &pagination);
+    render(&state.tera, "admin/submissions/index.html", ctx).map(IntoResponse::into_response)
+}
+
+#[derive(Serialize)]
 struct AdminContestItem {
     id: String,
     title: String,

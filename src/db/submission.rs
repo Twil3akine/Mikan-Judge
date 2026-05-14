@@ -75,6 +75,21 @@ pub struct SubmissionListRow {
     pub score: Option<f64>,
 }
 
+/// 管理者向け提出一覧
+#[derive(Debug, sqlx::FromRow)]
+pub struct AdminSubmissionListRow {
+    pub id: Uuid,
+    pub username: Option<String>,
+    pub contest_id: Option<String>,
+    pub problem_id: String,
+    pub language: String,
+    pub status: String,
+    pub time_used_ms: Option<i64>,
+    pub memory_used_kb: Option<i64>,
+    pub score: Option<f64>,
+    pub created_at: DateTime<Utc>,
+}
+
 pub async fn insert(pool: &PgPool, sub: &Submission) -> Result<()> {
     sqlx::query(
         "INSERT INTO submissions (id, problem_id, user_id, contest_id, language, source_code, status)
@@ -147,6 +162,34 @@ pub async fn list_recent(pool: &PgPool, limit: i64) -> Result<Vec<SubmissionList
     .fetch_all(pool)
     .await?;
     Ok(rows)
+}
+
+pub async fn list_admin_recent(
+    pool: &PgPool,
+    page: i64,
+    per_page: i64,
+) -> Result<Vec<AdminSubmissionListRow>> {
+    let offset = (page - 1) * per_page;
+    let rows = sqlx::query_as::<_, AdminSubmissionListRow>(
+        "SELECT s.id, u.username, s.contest_id, s.problem_id, s.language, s.status,
+                s.time_used_ms, s.memory_used_kb, s.score, s.created_at
+         FROM submissions s
+         LEFT JOIN users u ON s.user_id = u.id
+         ORDER BY s.created_at DESC
+         LIMIT $1 OFFSET $2",
+    )
+    .bind(per_page)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn count_all(pool: &PgPool) -> Result<i64> {
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM submissions")
+        .fetch_one(pool)
+        .await?;
+    Ok(row.0)
 }
 
 /// コンテスト内の提出一覧（ページネーション付き）
