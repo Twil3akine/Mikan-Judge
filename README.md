@@ -195,6 +195,7 @@ VALUES ('abc001', 'aplusb', 1, 'A');
 ## 管理者権限
 
 管理画面は `/admin` です。
+問題一覧は `/admin/problems` で確認できます。
 コンテスト一覧は `/admin/contests` で確認できます。
 コンテスト作成は `/admin/contests/new` から行えます。
 コンテスト編集は `/admin/contests/<contest_id>/edit` から行えます。

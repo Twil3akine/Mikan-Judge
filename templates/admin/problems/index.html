@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}問題管理 | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1.5rem">
+  <div>
+    <h1 style="margin-bottom:.35rem">問題管理</h1>
+    <p style="color:var(--muted);margin:0">
+      problems ディレクトリにある問題ファイルの状態を確認できます。
+    </p>
+  </div>
+  <a href="/admin" class="btn" style="padding:.55rem .9rem;white-space:nowrap">管理画面へ戻る</a>
+</div>
+
+{% if problem_errors | length > 0 %}
+<div class="card" style="border:1px solid #fecaca">
+  <h2 style="font-size:1rem;margin-top:0;color:var(--wa)">読み込みエラー</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>問題ID</th>
+        <th>エラー</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for error in problem_errors %}
+      <tr>
+        <td><code>{{ error.id }}</code></td>
+        <td style="color:var(--wa)">{{ error.message }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card" style="overflow-x:auto">
+  <table style="min-width:820px">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>タイトル</th>
+        <th>配点</th>
+        <th>時間制限</th>
+        <th>メモリ</th>
+        <th>ケース数</th>
+        <th>scorer</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for problem in problems %}
+      <tr>
+        <td><code>{{ problem.id }}</code></td>
+        <td>{{ problem.title }}</td>
+        <td>{{ problem.score }}</td>
+        <td>{{ problem.time_limit_ms }} ms</td>
+        <td>{{ problem.memory_limit_mib }} MiB</td>
+        <td>{{ problem.testcase_count }}</td>
+        <td>{% if problem.has_scorer %}あり{% else %}なし{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" style="color:var(--muted);text-align:center;padding:2rem">
+          読み込める問題はありません。
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

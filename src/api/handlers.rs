@@ -680,6 +680,84 @@ pub async fn admin_index(
 }
 
 #[derive(Serialize)]
+struct AdminProblemItem {
+    id: String,
+    title: String,
+    score: u64,
+    time_limit_ms: u64,
+    memory_limit_mib: u64,
+    testcase_count: usize,
+    has_scorer: bool,
+}
+
+#[derive(Serialize)]
+struct AdminProblemErrorItem {
+    id: String,
+    message: String,
+}
+
+fn load_admin_problem_items(
+    problems_dir: &std::path::Path,
+) -> (Vec<AdminProblemItem>, Vec<AdminProblemErrorItem>) {
+    let Ok(entries) = std::fs::read_dir(problems_dir) else {
+        return (
+            Vec::new(),
+            vec![AdminProblemErrorItem {
+                id: problems_dir.display().to_string(),
+                message: "problems ディレクトリを読み込めません".to_string(),
+            }],
+        );
+    };
+
+    let mut dirs: Vec<_> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .collect();
+    dirs.sort_by_key(|e| e.file_name());
+
+    let mut problems = Vec::new();
+    let mut errors = Vec::new();
+    for dir in dirs {
+        let id = dir.file_name().to_string_lossy().to_string();
+        match problem::load_one(problems_dir, &id) {
+            Ok(problem) => problems.push(AdminProblemItem {
+                id: problem.id,
+                title: problem.title,
+                score: problem.score,
+                time_limit_ms: problem.time_limit_ms,
+                memory_limit_mib: problem.memory_limit_kb / 1024,
+                testcase_count: problem.testcases.len(),
+                has_scorer: problem.scorer_path.is_some(),
+            }),
+            Err(e) => errors.push(AdminProblemErrorItem {
+                id,
+                message: e.to_string(),
+            }),
+        }
+    }
+
+    (problems, errors)
+}
+
+pub async fn admin_problems_index(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<Response, HtmlError> {
+    let user = match require_admin_user(&state, &session).await? {
+        Ok(user) => user,
+        Err(response) => return Ok(response),
+    };
+
+    let (problems, problem_errors) = load_admin_problem_items(&state.problems_dir);
+    let mut ctx = Context::new();
+    ctx.insert("current_user", &Some(user.username));
+    ctx.insert("contest_id", &Option::<String>::None);
+    ctx.insert("problems", &problems);
+    ctx.insert("problem_errors", &problem_errors);
+    render(&state.tera, "admin/problems/index.html", ctx).map(IntoResponse::into_response)
+}
+
+#[derive(Serialize)]
 struct AdminContestItem {
     id: String,
     title: String,

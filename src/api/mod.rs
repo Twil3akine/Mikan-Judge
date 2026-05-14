@@ -45,6 +45,7 @@ pub async fn create_router(state: AppState) -> Router {
         // ---- トップ（ランディング）・コンテスト一覧 ----
         .route("/", get(handlers::index))
         .route("/admin", get(handlers::admin_index))
+        .route("/admin/problems", get(handlers::admin_problems_index))
         .route(
             "/admin/contests",
             get(handlers::admin_contests_index).post(handlers::admin_contests_create),
