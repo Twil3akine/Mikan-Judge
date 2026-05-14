@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     response::{Html, IntoResponse, Json, Redirect, Response},
 };
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tera::Context;
@@ -14,7 +14,9 @@ use uuid::Uuid;
 
 use crate::db::{contest as db_contest, submission as db_sub, user as db_user};
 use crate::problem;
-use crate::types::{JudgeStatus, JudgeType, Language, Submission, SubmitRequest, TestcaseVerdict};
+use crate::types::{
+    Contest, JudgeStatus, JudgeType, Language, Submission, SubmitRequest, TestcaseVerdict,
+};
 use crate::worker::{JudgeJob, create_submission};
 
 use super::AppState;
@@ -722,6 +724,139 @@ pub async fn admin_contests_index(
     ctx.insert("contest_id", &Option::<String>::None);
     ctx.insert("contests", &items);
     render(&state.tera, "admin/contests/index.html", ctx).map(IntoResponse::into_response)
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct AdminContestForm {
+    id: String,
+    title: String,
+    description: String,
+    start_time: String,
+    end_time: String,
+    judge_type: String,
+}
+
+fn is_valid_contest_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn parse_jst_datetime_local(raw: &str) -> anyhow::Result<DateTime<Utc>> {
+    let naive = NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M")
+        .or_else(|_| NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S"))?;
+    let jst = FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
+    let local = jst
+        .from_local_datetime(&naive)
+        .single()
+        .ok_or_else(|| anyhow::anyhow!("invalid datetime"))?;
+    Ok(local.with_timezone(&Utc))
+}
+
+fn parse_judge_type(raw: &str) -> Option<JudgeType> {
+    match raw {
+        "exact" => Some(JudgeType::Exact),
+        "heuristic" => Some(JudgeType::Heuristic),
+        _ => None,
+    }
+}
+
+fn validate_admin_contest_form(form: &AdminContestForm) -> Result<Contest, String> {
+    let id = form.id.trim();
+    let title = form.title.trim();
+    let description = form.description.trim();
+
+    if !is_valid_contest_id(id) {
+        return Err("IDは1〜64文字の英数字・_・-で入力してください".to_string());
+    }
+    if title.is_empty() {
+        return Err("タイトルを入力してください".to_string());
+    }
+
+    let start_time = parse_jst_datetime_local(form.start_time.trim())
+        .map_err(|_| "開始時刻を正しく入力してください".to_string())?;
+    let end_time = parse_jst_datetime_local(form.end_time.trim())
+        .map_err(|_| "終了時刻を正しく入力してください".to_string())?;
+    if start_time >= end_time {
+        return Err("終了時刻は開始時刻より後にしてください".to_string());
+    }
+
+    let judge_type = parse_judge_type(form.judge_type.trim())
+        .ok_or_else(|| "ジャッジ種別を正しく選択してください".to_string())?;
+
+    Ok(Contest {
+        id: id.to_string(),
+        title: title.to_string(),
+        description: description.to_string(),
+        start_time,
+        end_time,
+        judge_type,
+    })
+}
+
+fn render_admin_contest_form(
+    state: &AppState,
+    username: &str,
+    form: AdminContestForm,
+    error: Option<String>,
+) -> Result<Response, HtmlError> {
+    let mut ctx = Context::new();
+    ctx.insert("current_user", &Some(username));
+    ctx.insert("contest_id", &Option::<String>::None);
+    ctx.insert("form", &form);
+    ctx.insert("error", &error);
+    render(&state.tera, "admin/contests/new.html", ctx).map(IntoResponse::into_response)
+}
+
+pub async fn admin_contests_new(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<Response, HtmlError> {
+    let user = match require_admin_user(&state, &session).await? {
+        Ok(user) => user,
+        Err(response) => return Ok(response),
+    };
+
+    let form = AdminContestForm {
+        judge_type: "exact".to_string(),
+        ..Default::default()
+    };
+    render_admin_contest_form(&state, &user.username, form, None)
+}
+
+pub async fn admin_contests_create(
+    State(state): State<AppState>,
+    session: Session,
+    Form(form): Form<AdminContestForm>,
+) -> Result<Response, HtmlError> {
+    let user = match require_admin_user(&state, &session).await? {
+        Ok(user) => user,
+        Err(response) => return Ok(response),
+    };
+
+    let contest = match validate_admin_contest_form(&form) {
+        Ok(contest) => contest,
+        Err(message) => {
+            return render_admin_contest_form(&state, &user.username, form, Some(message));
+        }
+    };
+
+    if let Err(e) = db_contest::insert(&state.pool, &contest).await {
+        tracing::warn!(contest_id = %contest.id, "failed to create contest: {e}");
+        return render_admin_contest_form(
+            &state,
+            &user.username,
+            form,
+            Some(
+                "コンテストの作成に失敗しました。IDが既に使われている可能性があります。"
+                    .to_string(),
+            ),
+        );
+    }
+
+    Ok(Redirect::to("/admin/contests").into_response())
 }
 
 pub async fn languages(
@@ -1905,7 +2040,10 @@ pub async fn api_submit(
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_SOURCE_CODE_BYTES, source_code_too_large};
+    use super::{
+        AdminContestForm, MAX_SOURCE_CODE_BYTES, is_valid_contest_id, source_code_too_large,
+        validate_admin_contest_form,
+    };
 
     #[test]
     fn source_code_size_limit_allows_exactly_512_kib() {
@@ -1917,6 +2055,45 @@ mod tests {
     fn source_code_size_limit_rejects_more_than_512_kib() {
         let source = "a".repeat(MAX_SOURCE_CODE_BYTES + 1);
         assert!(source_code_too_large(&source));
+    }
+
+    #[test]
+    fn contest_id_allows_url_safe_ascii() {
+        assert!(is_valid_contest_id("abc001"));
+        assert!(is_valid_contest_id("abc-001_alpha"));
+    }
+
+    #[test]
+    fn contest_id_rejects_empty_or_unsafe_chars() {
+        assert!(!is_valid_contest_id(""));
+        assert!(!is_valid_contest_id("abc/001"));
+        assert!(!is_valid_contest_id("abc 001"));
+    }
+
+    #[test]
+    fn contest_form_requires_end_after_start() {
+        let form = AdminContestForm {
+            id: "abc001".to_string(),
+            title: "ABC001".to_string(),
+            description: String::new(),
+            start_time: "2026-05-14T21:00".to_string(),
+            end_time: "2026-05-14T21:00".to_string(),
+            judge_type: "exact".to_string(),
+        };
+        assert!(validate_admin_contest_form(&form).is_err());
+    }
+
+    #[test]
+    fn contest_form_accepts_valid_exact_contest() {
+        let form = AdminContestForm {
+            id: "abc001".to_string(),
+            title: "ABC001".to_string(),
+            description: "test contest".to_string(),
+            start_time: "2026-05-14T21:00".to_string(),
+            end_time: "2026-05-14T23:00".to_string(),
+            judge_type: "exact".to_string(),
+        };
+        assert!(validate_admin_contest_form(&form).is_ok());
     }
 }
 

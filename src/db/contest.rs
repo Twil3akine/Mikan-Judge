@@ -37,6 +37,22 @@ pub async fn list_all(pool: &PgPool) -> Result<Vec<Contest>> {
     Ok(rows.into_iter().map(|r| r.into_contest()).collect())
 }
 
+pub async fn insert(pool: &PgPool, contest: &Contest) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO contests (id, title, description, start_time, end_time, judge_type)
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(&contest.id)
+    .bind(&contest.title)
+    .bind(&contest.description)
+    .bind(contest.start_time)
+    .bind(contest.end_time)
+    .bind(contest.judge_type.to_db())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn get_by_id(pool: &PgPool, contest_id: &str) -> Result<Option<Contest>> {
     let row = sqlx::query_as::<_, ContestRow>(
         "SELECT id, title, description, start_time, end_time, judge_type

@@ -275,6 +275,13 @@ impl JudgeType {
             _ => JudgeType::Exact,
         }
     }
+
+    pub fn to_db(&self) -> &'static str {
+        match self {
+            JudgeType::Exact => "exact",
+            JudgeType::Heuristic => "heuristic",
+        }
+    }
 }
 
 impl JudgeStatus {

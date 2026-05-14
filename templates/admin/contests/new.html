@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}コンテスト作成 | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="max-width:720px;margin:0 auto">
+  <div style="margin-bottom:1.5rem">
+    <h1 style="margin-bottom:.35rem">コンテスト作成</h1>
+    <p style="color:var(--muted);margin:0">
+      コンテストの基本情報を登録します。問題の紐付けは別画面で追加します。
+    </p>
+  </div>
+
+  {% if error %}
+  <div style="background:#fee2e2;border:1px solid #fecaca;border-radius:var(--radius);padding:.75rem 1rem;margin-bottom:1.25rem;color:var(--wa);font-size:.9rem">
+    {{ error }}
+  </div>
+  {% endif %}
+
+  <form method="POST" action="/admin/contests" class="card">
+    <div class="form-group">
+      <label for="id">ID</label>
+      <input type="text" name="id" id="id" required maxlength="64" pattern="[A-Za-z0-9_-]+"
+             value="{{ form.id }}" placeholder="abc001">
+      <p style="color:var(--muted);font-size:.8rem;margin-top:.35rem">
+        1〜64文字の英数字・_・- が使えます。
+      </p>
+    </div>
+
+    <div class="form-group">
+      <label for="title">タイトル</label>
+      <input type="text" name="title" id="title" required value="{{ form.title }}" placeholder="MikanJudge Contest 001">
+    </div>
+
+    <div class="form-group">
+      <label for="description">説明</label>
+      <textarea name="description" id="description" style="height:120px;background:#fff;color:var(--text);font-family:inherit">{{ form.description }}</textarea>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem">
+      <div class="form-group">
+        <label for="start_time">開始時刻</label>
+        <input type="datetime-local" name="start_time" id="start_time" required value="{{ form.start_time }}"
+               style="width:100%;padding:.75rem;border:1px solid var(--border);border-radius:var(--radius);font-size:1rem">
+      </div>
+
+      <div class="form-group">
+        <label for="end_time">終了時刻</label>
+        <input type="datetime-local" name="end_time" id="end_time" required value="{{ form.end_time }}"
+               style="width:100%;padding:.75rem;border:1px solid var(--border);border-radius:var(--radius);font-size:1rem">
+      </div>
+    </div>
+    <p style="color:var(--muted);font-size:.8rem;margin:-.5rem 0 1rem">
+      時刻はJSTとして保存します。
+    </p>
+
+    <div class="form-group">
+      <label for="judge_type">ジャッジ種別</label>
+      <select name="judge_type" id="judge_type">
+        <option value="exact" {% if form.judge_type == "exact" %}selected{% endif %}>通常</option>
+        <option value="heuristic" {% if form.judge_type == "heuristic" %}selected{% endif %}>ヒューリスティック</option>
+      </select>
+    </div>
+
+    <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1.5rem">
+      <button type="submit" class="btn">作成する</button>
+      <a href="/admin/contests" class="btn" style="background:#fff;color:var(--text);border:1px solid var(--border)">キャンセル</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

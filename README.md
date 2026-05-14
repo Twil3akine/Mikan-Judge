@@ -196,6 +196,7 @@ VALUES ('abc001', 'aplusb', 1, 'A');
 
 管理画面は `/admin` です。
 コンテスト一覧は `/admin/contests` で確認できます。
+コンテスト作成は `/admin/contests/new` から行えます。
 管理者権限は `users.is_admin` で管理します。
 初回はDBに直接接続して、対象ユーザーへ権限を付与します。
 
