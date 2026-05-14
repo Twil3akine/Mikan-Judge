@@ -1,18 +1,30 @@
 {% extends "base.html" %}
-{% block title %}提出言語 | MikanJudge{% endblock %}
+{% block title %}提出について | MikanJudge{% endblock %}
 
 {% block content %}
 <div style="margin-bottom:1.5rem">
-  <h1 style="margin-bottom:.35rem">提出言語について</h1>
+  <h1 style="margin-bottom:.35rem">提出について</h1>
   <p style="color:var(--muted);margin:0">
-    各言語のバージョン、保存ファイル名、コンパイルコマンド、実行コマンド、ライブラリ制約をまとめています。
+    提出時の注意点と、対応言語の実行環境をまとめています。
   </p>
 </div>
 
 <div class="card" style="margin-bottom:1rem">
-  <p style="margin:0;color:var(--muted)">
-    すべての言語で外部ライブラリは未対応です。必要に応じてこのページに追記します。
-  </p>
+  <h2 style="margin-top:0;font-size:1rem">提出時の注意点</h2>
+  <ul style="margin:.75rem 0 0;padding-left:1.25rem;color:var(--muted);line-height:1.8">
+    <li>ソースコードのサイズ上限は 512 KiB です。上限を超える提出は受理されません。</li>
+    <li>通常の問題では、標準出力を期待出力と比較して判定します。前後の空白・改行は無視されます。</li>
+    <li>すべてのテストケースを実行し、ケースごとの結果を表示します。</li>
+    <li>提出間隔には制限があります。通常コンテストは 5 秒、ヒューリスティックコンテストは 5 分です。</li>
+    <li>標準入力から読み込み、標準出力へ答えを出力してください。</li>
+    <li>外部ライブラリは未対応です。各言語の標準ライブラリだけを使用してください。</li>
+    <li>Linux の judge 環境では提出プログラムの外部通信は遮断されます。</li>
+    <li>大量出力は制限されます。必要な答えだけを出力してください。</li>
+  </ul>
+</div>
+
+<div style="margin:1.5rem 0 1rem">
+  <h2 style="margin:0;font-size:1.15rem">対応言語</h2>
 </div>
 
 {% for lang in languages %}
