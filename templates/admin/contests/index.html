@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}コンテスト管理 | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1.5rem">
+  <div>
+    <h1 style="margin-bottom:.35rem">コンテスト管理</h1>
+    <p style="color:var(--muted);margin:0">
+      登録済みコンテストの状態とジャッジ種別を確認できます。
+    </p>
+  </div>
+  <a href="/admin" class="btn" style="padding:.55rem .9rem;white-space:nowrap">管理画面へ戻る</a>
+</div>
+
+<div class="card" style="overflow-x:auto">
+  <table style="min-width:760px">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>タイトル</th>
+        <th>開始</th>
+        <th>終了</th>
+        <th>状態</th>
+        <th>ジャッジ種別</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for contest in contests %}
+      <tr>
+        <td><code>{{ contest.id }}</code></td>
+        <td>{{ contest.title }}</td>
+        <td>{{ contest.start_time }}</td>
+        <td>{{ contest.end_time }}</td>
+        <td><span class="badge {{ contest.status_class }}">{{ contest.status_label }}</span></td>
+        <td>{{ contest.judge_type }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6" style="color:var(--muted);text-align:center;padding:2rem">
+          コンテストはまだ登録されていません。
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

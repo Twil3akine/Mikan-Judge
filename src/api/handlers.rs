@@ -119,6 +119,28 @@ async fn current_user(session: &Session, pool: &sqlx::PgPool) -> Option<crate::t
     db_user::find_by_id(pool, user_id).await.ok().flatten()
 }
 
+async fn require_admin_user(
+    state: &AppState,
+    session: &Session,
+) -> Result<Result<crate::types::User, Response>, HtmlError> {
+    let Some(user) = current_user(session, &state.pool).await else {
+        return Ok(Err(Redirect::to("/login").into_response()));
+    };
+
+    if !user.is_admin {
+        let mut ctx = Context::new();
+        ctx.insert("current_user", &Some(user.username));
+        ctx.insert("contest_id", &Option::<String>::None);
+        return Ok(Err((
+            StatusCode::FORBIDDEN,
+            render(&state.tera, "errors/admin_forbidden.html", ctx)?.0,
+        )
+            .into_response()));
+    }
+
+    Ok(Ok(user))
+}
+
 fn hash_password(password: &str) -> anyhow::Result<String> {
     use argon2::{
         Argon2, PasswordHasher,
@@ -644,25 +666,62 @@ pub async fn admin_index(
     State(state): State<AppState>,
     session: Session,
 ) -> Result<Response, HtmlError> {
-    let Some(user) = current_user(&session, &state.pool).await else {
-        return Ok(Redirect::to("/login").into_response());
+    let user = match require_admin_user(&state, &session).await? {
+        Ok(user) => user,
+        Err(response) => return Ok(response),
     };
-
-    if !user.is_admin {
-        let mut ctx = Context::new();
-        ctx.insert("current_user", &Some(user.username));
-        ctx.insert("contest_id", &Option::<String>::None);
-        return Ok((
-            StatusCode::FORBIDDEN,
-            render(&state.tera, "errors/admin_forbidden.html", ctx)?.0,
-        )
-            .into_response());
-    }
 
     let mut ctx = Context::new();
     ctx.insert("current_user", &Some(user.username));
     ctx.insert("contest_id", &Option::<String>::None);
     render(&state.tera, "admin/index.html", ctx).map(IntoResponse::into_response)
+}
+
+#[derive(Serialize)]
+struct AdminContestItem {
+    id: String,
+    title: String,
+    start_time: String,
+    end_time: String,
+    status_label: &'static str,
+    status_class: &'static str,
+    judge_type: &'static str,
+}
+
+fn to_admin_contest_item(c: &crate::types::Contest) -> AdminContestItem {
+    let status = c.status();
+    let judge_type = match c.judge_type {
+        JudgeType::Exact => "通常",
+        JudgeType::Heuristic => "ヒューリスティック",
+    };
+    AdminContestItem {
+        id: c.id.clone(),
+        title: c.title.clone(),
+        start_time: fmt_jst(c.start_time),
+        end_time: fmt_jst(c.end_time),
+        status_label: status.label(),
+        status_class: status.badge_class(),
+        judge_type,
+    }
+}
+
+pub async fn admin_contests_index(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<Response, HtmlError> {
+    let user = match require_admin_user(&state, &session).await? {
+        Ok(user) => user,
+        Err(response) => return Ok(response),
+    };
+
+    let contests = db_contest::list_all(&state.pool).await?;
+    let items: Vec<AdminContestItem> = contests.iter().map(to_admin_contest_item).collect();
+
+    let mut ctx = Context::new();
+    ctx.insert("current_user", &Some(user.username));
+    ctx.insert("contest_id", &Option::<String>::None);
+    ctx.insert("contests", &items);
+    render(&state.tera, "admin/contests/index.html", ctx).map(IntoResponse::into_response)
 }
 
 pub async fn languages(

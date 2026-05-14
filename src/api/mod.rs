@@ -45,6 +45,7 @@ pub async fn create_router(state: AppState) -> Router {
         // ---- トップ（ランディング）・コンテスト一覧 ----
         .route("/", get(handlers::index))
         .route("/admin", get(handlers::admin_index))
+        .route("/admin/contests", get(handlers::admin_contests_index))
         .route("/languages", get(handlers::languages))
         .route("/contests", get(handlers::contests_index))
         // ---- コンテスト内ルート ----
