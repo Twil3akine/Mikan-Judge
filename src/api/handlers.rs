@@ -689,6 +689,7 @@ struct AdminContestItem {
     status_class: &'static str,
     judge_type: &'static str,
     edit_url: String,
+    problems_url: String,
 }
 
 fn to_admin_contest_item(c: &crate::types::Contest) -> AdminContestItem {
@@ -706,6 +707,7 @@ fn to_admin_contest_item(c: &crate::types::Contest) -> AdminContestItem {
         status_class: status.badge_class(),
         judge_type,
         edit_url: format!("/admin/contests/{}/edit", c.id),
+        problems_url: format!("/admin/contests/{}/problems", c.id),
     }
 }
 
@@ -976,6 +978,185 @@ pub async fn admin_contests_update(
     }
 
     Ok(Redirect::to("/admin/contests").into_response())
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct AdminContestProblemForm {
+    problem_id: String,
+    label: String,
+    display_order: i32,
+}
+
+#[derive(Serialize)]
+struct AdminContestProblemItem {
+    label: String,
+    problem_id: String,
+    problem_title: String,
+    display_order: i32,
+    delete_url: String,
+}
+
+#[derive(Serialize)]
+struct AdminProblemOption {
+    id: String,
+    title: String,
+}
+
+fn validate_admin_contest_problem_form(
+    form: &AdminContestProblemForm,
+    problems_dir: &std::path::Path,
+) -> Result<(String, String, i32), String> {
+    let problem_id = form.problem_id.trim();
+    let label = form.label.trim();
+
+    if problem_id.is_empty() {
+        return Err("問題を選択してください".to_string());
+    }
+    if problem::load_one(problems_dir, problem_id).is_err() {
+        return Err("選択した問題が見つかりません".to_string());
+    }
+    if label.is_empty() {
+        return Err("ラベルを入力してください".to_string());
+    }
+
+    Ok((problem_id.to_string(), label.to_string(), form.display_order))
+}
+
+async fn render_admin_contest_problems(
+    state: &AppState,
+    username: &str,
+    contest_id: &str,
+    form: AdminContestProblemForm,
+    error: Option<String>,
+) -> Result<Response, HtmlError> {
+    let contest = db_contest::get_by_id(&state.pool, contest_id)
+        .await?
+        .ok_or_else(|| HtmlError(anyhow::anyhow!("contest not found")))?;
+
+    let linked = db_contest::problems_for_contest(&state.pool, contest_id).await?;
+    let all_problems = problem::load_all(&state.problems_dir);
+    let title_map: HashMap<&str, &str> = all_problems
+        .iter()
+        .map(|p| (p.id.as_str(), p.title.as_str()))
+        .collect();
+
+    let linked_items: Vec<AdminContestProblemItem> = linked
+        .iter()
+        .map(|p| AdminContestProblemItem {
+            label: p.label.clone(),
+            problem_id: p.problem_id.clone(),
+            problem_title: title_map
+                .get(p.problem_id.as_str())
+                .copied()
+                .unwrap_or("(問題ファイルが見つかりません)")
+                .to_string(),
+            display_order: p.display_order,
+            delete_url: format!(
+                "/admin/contests/{contest_id}/problems/{}/delete",
+                p.problem_id
+            ),
+        })
+        .collect();
+
+    let problem_options: Vec<AdminProblemOption> = all_problems
+        .iter()
+        .map(|p| AdminProblemOption {
+            id: p.id.clone(),
+            title: p.title.clone(),
+        })
+        .collect();
+
+    let mut ctx = Context::new();
+    ctx.insert("current_user", &Some(username));
+    ctx.insert("contest_id", &Option::<String>::None);
+    ctx.insert("admin_contest_id", &contest.id);
+    ctx.insert("contest_title", &contest.title);
+    ctx.insert("linked_problems", &linked_items);
+    ctx.insert("problem_options", &problem_options);
+    ctx.insert("form", &form);
+    ctx.insert("error", &error);
+    render(&state.tera, "admin/contests/problems.html", ctx).map(IntoResponse::into_response)
+}
+
+pub async fn admin_contest_problems_index(
+    State(state): State<AppState>,
+    session: Session,
+    Path(contest_id): Path<String>,
+) -> Result<Response, HtmlError> {
+    let user = match require_admin_user(&state, &session).await? {
+        Ok(user) => user,
+        Err(response) => return Ok(response),
+    };
+
+    let form = AdminContestProblemForm {
+        problem_id: String::new(),
+        label: String::new(),
+        display_order: 1,
+    };
+    render_admin_contest_problems(&state, &user.username, &contest_id, form, None).await
+}
+
+pub async fn admin_contest_problems_add(
+    State(state): State<AppState>,
+    session: Session,
+    Path(contest_id): Path<String>,
+    Form(form): Form<AdminContestProblemForm>,
+) -> Result<Response, HtmlError> {
+    let user = match require_admin_user(&state, &session).await? {
+        Ok(user) => user,
+        Err(response) => return Ok(response),
+    };
+
+    let (problem_id, label, display_order) =
+        match validate_admin_contest_problem_form(&form, &state.problems_dir) {
+            Ok(valid) => valid,
+            Err(message) => {
+                return render_admin_contest_problems(
+                    &state,
+                    &user.username,
+                    &contest_id,
+                    form,
+                    Some(message),
+                )
+                .await;
+            }
+        };
+
+    if let Err(e) = db_contest::add_problem_to_contest(
+        &state.pool,
+        &contest_id,
+        &problem_id,
+        &label,
+        display_order,
+    )
+    .await
+    {
+        tracing::warn!(%contest_id, %problem_id, "failed to add contest problem: {e}");
+        return render_admin_contest_problems(
+            &state,
+            &user.username,
+            &contest_id,
+            form,
+            Some("問題の追加に失敗しました。既に追加済みの可能性があります。".to_string()),
+        )
+        .await;
+    }
+
+    Ok(Redirect::to(&format!("/admin/contests/{contest_id}/problems")).into_response())
+}
+
+pub async fn admin_contest_problems_delete(
+    State(state): State<AppState>,
+    session: Session,
+    Path((contest_id, problem_id)): Path<(String, String)>,
+) -> Result<Response, HtmlError> {
+    match require_admin_user(&state, &session).await? {
+        Ok(_) => {}
+        Err(response) => return Ok(response),
+    };
+
+    db_contest::remove_problem_from_contest(&state.pool, &contest_id, &problem_id).await?;
+    Ok(Redirect::to(&format!("/admin/contests/{contest_id}/problems")).into_response())
 }
 
 pub async fn languages(

@@ -63,6 +63,9 @@
 
     <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1.5rem">
       <button type="submit" class="btn">{{ submit_label }}</button>
+      {% if id_readonly %}
+      <a href="/admin/contests/{{ form.id }}/problems" class="btn" style="background:#fff;color:var(--text);border:1px solid var(--border)">問題管理</a>
+      {% endif %}
       <a href="/admin/contests" class="btn" style="background:#fff;color:var(--text);border:1px solid var(--border)">キャンセル</a>
     </div>
   </form>

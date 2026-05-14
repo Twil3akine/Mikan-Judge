@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}問題紐付け | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1.5rem">
+  <div>
+    <h1 style="margin-bottom:.35rem">問題紐付け</h1>
+    <p style="color:var(--muted);margin:0">
+      <code>{{ admin_contest_id }}</code> / {{ contest_title }}
+    </p>
+  </div>
+  <div style="display:flex;gap:.75rem;flex-wrap:wrap;justify-content:flex-end">
+    <a href="/admin/contests/{{ admin_contest_id }}/edit" class="btn" style="padding:.55rem .9rem;white-space:nowrap">コンテスト編集</a>
+    <a href="/admin/contests" class="btn" style="padding:.55rem .9rem;white-space:nowrap">一覧へ戻る</a>
+  </div>
+</div>
+
+{% if error %}
+<div style="background:#fee2e2;border:1px solid #fecaca;border-radius:var(--radius);padding:.75rem 1rem;margin-bottom:1.25rem;color:var(--wa);font-size:.9rem">
+  {{ error }}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="font-size:1rem;margin-top:0">問題を追加</h2>
+  <form method="POST" action="/admin/contests/{{ admin_contest_id }}/problems" style="display:grid;grid-template-columns:minmax(220px,1fr) 100px 120px auto;gap:1rem;align-items:end">
+    <div class="form-group" style="margin-bottom:0">
+      <label for="problem_id">問題</label>
+      <select name="problem_id" id="problem_id" required style="width:100%">
+        <option value="">選択してください</option>
+        {% for p in problem_options %}
+        <option value="{{ p.id }}" {% if form.problem_id == p.id %}selected{% endif %}>{{ p.id }} / {{ p.title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group" style="margin-bottom:0">
+      <label for="label">ラベル</label>
+      <input type="text" name="label" id="label" required value="{{ form.label }}" placeholder="A">
+    </div>
+
+    <div class="form-group" style="margin-bottom:0">
+      <label for="display_order">表示順</label>
+      <input type="number" name="display_order" id="display_order" required value="{{ form.display_order }}" min="0"
+             style="width:100%;padding:.75rem;border:1px solid var(--border);border-radius:var(--radius);font-size:1rem">
+    </div>
+
+    <button type="submit" class="btn" style="padding:.75rem 1rem">追加</button>
+  </form>
+</div>
+
+<div class="card" style="overflow-x:auto">
+  <h2 style="font-size:1rem;margin-top:0">紐付け済み問題</h2>
+  <table style="min-width:680px">
+    <thead>
+      <tr>
+        <th>表示順</th>
+        <th>ラベル</th>
+        <th>問題ID</th>
+        <th>タイトル</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in linked_problems %}
+      <tr>
+        <td>{{ p.display_order }}</td>
+        <td><b>{{ p.label }}</b></td>
+        <td><code>{{ p.problem_id }}</code></td>
+        <td>{{ p.problem_title }}</td>
+        <td>
+          <form method="POST" action="{{ p.delete_url }}" style="margin:0"
+                onsubmit="return confirm('このコンテストから問題 {{ p.problem_id }} の紐付けを削除しますか？')">
+            <button type="submit" class="btn" style="background:var(--wa);padding:.45rem .75rem;font-size:.8rem">削除</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" style="color:var(--muted);text-align:center;padding:2rem">
+          まだ問題は紐付いていません。
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

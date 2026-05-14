@@ -106,6 +106,39 @@ pub async fn problems_for_contest(pool: &PgPool, contest_id: &str) -> Result<Vec
         .collect())
 }
 
+pub async fn add_problem_to_contest(
+    pool: &PgPool,
+    contest_id: &str,
+    problem_id: &str,
+    label: &str,
+    display_order: i32,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO contest_problems (contest_id, problem_id, display_order, label)
+         VALUES ($1, $2, $3, $4)",
+    )
+    .bind(contest_id)
+    .bind(problem_id)
+    .bind(display_order)
+    .bind(label)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn remove_problem_from_contest(
+    pool: &PgPool,
+    contest_id: &str,
+    problem_id: &str,
+) -> Result<()> {
+    sqlx::query("DELETE FROM contest_problems WHERE contest_id = $1 AND problem_id = $2")
+        .bind(contest_id)
+        .bind(problem_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// コンテスト一覧を Upcoming / Ongoing / Past に分けて返す
 pub struct ContestLists {
     pub ongoing: Vec<Contest>,
