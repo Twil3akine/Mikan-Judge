@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}管理画面 | MikanJudge{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1.5rem">
+  <h1 style="margin-bottom:.35rem">管理画面</h1>
+  <p style="color:var(--muted);margin:0">
+    コンテスト、問題、提出、ユーザーを管理するための入口です。
+  </p>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem">
+  <section class="card">
+    <h2 style="font-size:1rem;margin-top:0">コンテスト管理</h2>
+    <p style="color:var(--muted);line-height:1.6;margin-bottom:0">
+      コンテストの作成・編集、問題の紐付けをここに追加します。
+    </p>
+  </section>
+
+  <section class="card">
+    <h2 style="font-size:1rem;margin-top:0">問題管理</h2>
+    <p style="color:var(--muted);line-height:1.6;margin-bottom:0">
+      問題一覧、問題ファイルの検証結果、テストケース確認をここに追加します。
+    </p>
+  </section>
+
+  <section class="card">
+    <h2 style="font-size:1rem;margin-top:0">提出管理</h2>
+    <p style="color:var(--muted);line-height:1.6;margin-bottom:0">
+      管理者向けの提出確認、リジャッジ導線をここに追加します。
+    </p>
+  </section>
+
+  <section class="card">
+    <h2 style="font-size:1rem;margin-top:0">ユーザー管理</h2>
+    <p style="color:var(--muted);line-height:1.6;margin-bottom:0">
+      ユーザー一覧、管理者権限の付与・解除をここに追加します。
+    </p>
+  </section>
+</div>
+{% endblock %}

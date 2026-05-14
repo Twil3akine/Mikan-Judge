@@ -114,6 +114,11 @@ async fn current_username(session: &Session, pool: &sqlx::PgPool) -> Option<Stri
         .map(|u| u.username)
 }
 
+async fn current_user(session: &Session, pool: &sqlx::PgPool) -> Option<crate::types::User> {
+    let user_id: Uuid = session.get("user_id").await.ok().flatten()?;
+    db_user::find_by_id(pool, user_id).await.ok().flatten()
+}
+
 fn hash_password(password: &str) -> anyhow::Result<String> {
     use argon2::{
         Argon2, PasswordHasher,
@@ -631,6 +636,33 @@ pub async fn contests_index(
     );
     ctx.insert("contest_id", &Option::<String>::None);
     render(&state.tera, "contests/list.html", ctx)
+}
+
+// ---- 管理画面 ----
+
+pub async fn admin_index(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<Response, HtmlError> {
+    let Some(user) = current_user(&session, &state.pool).await else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+
+    if !user.is_admin {
+        let mut ctx = Context::new();
+        ctx.insert("current_user", &Some(user.username));
+        ctx.insert("contest_id", &Option::<String>::None);
+        return Ok((
+            StatusCode::FORBIDDEN,
+            render(&state.tera, "errors/admin_forbidden.html", ctx)?.0,
+        )
+            .into_response());
+    }
+
+    let mut ctx = Context::new();
+    ctx.insert("current_user", &Some(user.username));
+    ctx.insert("contest_id", &Option::<String>::None);
+    render(&state.tera, "admin/index.html", ctx).map(IntoResponse::into_response)
 }
 
 pub async fn languages(

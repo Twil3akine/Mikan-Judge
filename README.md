@@ -192,6 +192,16 @@ INSERT INTO contest_problems (contest_id, problem_id, display_order, label)
 VALUES ('abc001', 'aplusb', 1, 'A');
 ```
 
+## 管理者権限
+
+管理画面は `/admin` です。
+管理者権限は `users.is_admin` で管理します。
+初回はDBに直接接続して、対象ユーザーへ権限を付与します。
+
+```sql
+UPDATE users SET is_admin = TRUE WHERE username = '<username>';
+```
+
 ## プロジェクト構成
 
 ```

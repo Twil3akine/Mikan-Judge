@@ -10,6 +10,7 @@ struct UserRow {
     username: String,
     password_hash: String,
     default_language: Option<String>,
+    is_admin: bool,
 }
 
 impl UserRow {
@@ -19,6 +20,7 @@ impl UserRow {
             username: self.username,
             password_hash: self.password_hash,
             default_language: self.default_language,
+            is_admin: self.is_admin,
         }
     }
 }
@@ -27,7 +29,7 @@ pub async fn insert(pool: &PgPool, username: &str, password_hash: &str) -> Resul
     let row = sqlx::query_as::<_, UserRow>(
         "INSERT INTO users (username, password_hash)
          VALUES ($1, $2)
-         RETURNING id, username, password_hash, default_language",
+         RETURNING id, username, password_hash, default_language, is_admin",
     )
     .bind(username)
     .bind(password_hash)
@@ -38,7 +40,7 @@ pub async fn insert(pool: &PgPool, username: &str, password_hash: &str) -> Resul
 
 pub async fn find_by_username(pool: &PgPool, username: &str) -> Result<Option<User>> {
     let row = sqlx::query_as::<_, UserRow>(
-        "SELECT id, username, password_hash, default_language FROM users WHERE username = $1",
+        "SELECT id, username, password_hash, default_language, is_admin FROM users WHERE username = $1",
     )
     .bind(username)
     .fetch_optional(pool)
@@ -48,7 +50,7 @@ pub async fn find_by_username(pool: &PgPool, username: &str) -> Result<Option<Us
 
 pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<User>> {
     let row = sqlx::query_as::<_, UserRow>(
-        "SELECT id, username, password_hash, default_language FROM users WHERE id = $1",
+        "SELECT id, username, password_hash, default_language, is_admin FROM users WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)

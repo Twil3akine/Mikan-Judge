@@ -44,6 +44,7 @@ pub async fn create_router(state: AppState) -> Router {
         .route("/settings/delete-account", post(handlers::delete_account))
         // ---- トップ（ランディング）・コンテスト一覧 ----
         .route("/", get(handlers::index))
+        .route("/admin", get(handlers::admin_index))
         .route("/languages", get(handlers::languages))
         .route("/contests", get(handlers::contests_index))
         // ---- コンテスト内ルート ----
