@@ -19,6 +19,8 @@ use crate::worker::{JudgeJob, create_submission};
 
 use super::AppState;
 
+const MAX_SOURCE_CODE_BYTES: usize = 512 * 1024;
+
 // ---- エラー型 ----
 
 pub struct HtmlError(anyhow::Error);
@@ -43,6 +45,21 @@ impl<E: Into<anyhow::Error>> From<E> for HtmlError {
 
 fn render(tera: &tera::Tera, template: &str, ctx: Context) -> Result<Html<String>, HtmlError> {
     Ok(Html(tera.render(template, &ctx)?))
+}
+
+fn source_code_too_large(source_code: &str) -> bool {
+    source_code.len() > MAX_SOURCE_CODE_BYTES
+}
+
+fn source_code_too_large_response() -> Response {
+    (
+        StatusCode::PAYLOAD_TOO_LARGE,
+        format!(
+            "提出ソースコードが大きすぎます。上限は {} KiB です。",
+            MAX_SOURCE_CODE_BYTES / 1024
+        ),
+    )
+        .into_response()
 }
 
 fn fmt_jst(dt: DateTime<Utc>) -> String {
@@ -804,6 +821,10 @@ pub async fn contest_problem_submit(
         return Ok(Redirect::to(&format!("/contests/{contest_id}")).into_response());
     }
 
+    if source_code_too_large(&form.source_code) {
+        return Ok(source_code_too_large_response());
+    }
+
     let (cooldown_key, cooldown_ms) = if matches!(contest.judge_type, JudgeType::Heuristic) {
         ("last_heuristic_submit_at", 5 * 60 * 1000)
     } else {
@@ -821,6 +842,10 @@ pub async fn contest_problem_submit(
 
     let prob = problem::load_one(&state.problems_dir, &problem_id)
         .map_err(|_| HtmlError(anyhow::anyhow!("problem '{problem_id}' not found")))?;
+
+    if source_code_too_large(&form.source_code) {
+        return Ok(source_code_too_large_response());
+    }
 
     let language = Language::from_db(&form.language);
 
@@ -1743,6 +1768,10 @@ pub async fn api_submit(
     State(state): State<AppState>,
     Json(req): Json<SubmitRequest>,
 ) -> Result<Json<Value>, StatusCode> {
+    if source_code_too_large(&req.source_code) {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
     let id = Uuid::new_v4();
     let sub = Submission {
         id,
@@ -1781,6 +1810,23 @@ pub async fn api_submit(
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
     Ok(Json(json!({ "id": id })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_SOURCE_CODE_BYTES, source_code_too_large};
+
+    #[test]
+    fn source_code_size_limit_allows_exactly_512_kib() {
+        let source = "a".repeat(MAX_SOURCE_CODE_BYTES);
+        assert!(!source_code_too_large(&source));
+    }
+
+    #[test]
+    fn source_code_size_limit_rejects_more_than_512_kib() {
+        let source = "a".repeat(MAX_SOURCE_CODE_BYTES + 1);
+        assert!(source_code_too_large(&source));
+    }
 }
 
 pub async fn api_get_result(
